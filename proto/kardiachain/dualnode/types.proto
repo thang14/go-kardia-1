@@ -1,0 +1,18 @@
+syntax = "proto3";
+package kardiachain.dualnode;
+
+
+message Vote {
+    string hash = 1;
+    bytes validator_address = 6;
+    uint32 validator_index   = 7;
+    bytes signature         = 8;
+}
+
+
+message Message {
+    oneof sum {
+        Vote vote = 1;
+    }
+}
+  

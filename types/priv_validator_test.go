@@ -20,8 +20,10 @@ package types
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"testing"
 
+	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/crypto"
 )
 
@@ -40,9 +42,12 @@ func TestPrivValidatorAccessors(t *testing.T) {
 func TestPrivValidatorSignVote(t *testing.T) {
 	vote := &Vote{}
 	privValidator, _, _ := CreateNewPrivValidator()
-	if err := privValidator.SignVote("KAI", vote.ToProto()); err != nil {
+	pv := vote.ToProto()
+	if err := privValidator.SignVote("KAI", pv); err != nil {
 		t.Fatal("PV Sign Vote issue", err)
 	}
+	fmt.Println(common.Bytes2Hex(append(append(pv.Signature, pv.Signature...), append(pv.Signature, pv.Signature...)...)), len(pv.Signature))
+	t.Fail()
 }
 
 func TestPrivValidatorSignProposal(t *testing.T) {
