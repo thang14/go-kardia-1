@@ -1,8 +1,6 @@
 package consensus
 
 import (
-	"fmt"
-
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
@@ -19,17 +17,21 @@ type Reactor struct {
 	p2p.BaseReactor
 
 	logger log.Logger
+
+	router Router
 }
 
-func newReactor() *Reactor {
-	r := &Reactor{}
+func newReactor(router Router) *Reactor {
+	r := &Reactor{
+		router: router,
+	}
 	r.BaseReactor = *p2p.NewBaseReactor("DualReactor", r)
 	return r
 }
 
 // NewReactor creates a new reactor instance.
-func NewReactor() *Reactor {
-	return newReactor()
+func NewReactor(router Router) *Reactor {
+	return newReactor(router)
 }
 
 // Receive implements Reactor by handling different message types.
@@ -43,7 +45,9 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	switch msg := msg.(type) {
 	case *dproto.Vote:
-		fmt.Println(msg)
+		r.router.AddVote(msg)
+	case *dproto.Proposal:
+		r.router.SendVote(msg, chID, src)
 	}
 
 }
