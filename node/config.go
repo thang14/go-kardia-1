@@ -32,7 +32,6 @@ import (
 	"github.com/kardiachain/go-kardia/configs"
 
 	"github.com/kardiachain/go-kardia/consensus"
-	"github.com/kardiachain/go-kardia/dualchain/event_pool"
 	"github.com/kardiachain/go-kardia/kai/storage"
 	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/crypto"
@@ -93,9 +92,6 @@ type DualChainConfig struct {
 
 	// Genesis is genesis block which contain initial Block and accounts
 	DualGenesis *genesis.Genesis
-
-	// Dual's event pool options
-	DualEventPool event_pool.Config
 
 	// IsPrivate is true then peerId will be checked through smc to make sure that it has permission to access the chain
 	IsPrivate bool

@@ -19,7 +19,6 @@
 package base
 
 import (
-	"github.com/kardiachain/go-kardia/dualchain/event_pool"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/mainchain/tx_pool"
 	"github.com/kardiachain/go-kardia/types"
@@ -49,9 +48,6 @@ type BlockChainAdapter interface {
 
 	// ExternalChain returns externalChain which is internal proxy (eg:NeoProxy, TronProxy)
 	ExternalChain() BlockChainAdapter
-
-	// DualEventPool returns dual's eventPool
-	DualEventPool() *event_pool.Pool
 
 	// DualBlockChain returns dual blockchain
 	DualBlockChain() BaseBlockChain

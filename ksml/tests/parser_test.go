@@ -25,10 +25,10 @@ import (
 	"testing"
 
 	"github.com/kardiachain/go-kardia/configs"
-	message2 "github.com/kardiachain/go-kardia/dualnode/message"
 	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
 	"github.com/kardiachain/go-kardia/kai/storage/kvstore"
 	"github.com/kardiachain/go-kardia/ksml"
+	message2 "github.com/kardiachain/go-kardia/ksml/message"
 	message "github.com/kardiachain/go-kardia/ksml/proto"
 	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/log"

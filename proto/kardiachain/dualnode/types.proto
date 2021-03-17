@@ -28,7 +28,6 @@ message Proposal {
     repeated bytes args =  4;
 }
 
-
 message Message {
     oneof sum {
         Vote vote = 1;
