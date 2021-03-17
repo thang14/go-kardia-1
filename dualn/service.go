@@ -1,6 +1,9 @@
 package dualn
 
-import "github.com/kardiachain/go-kardia/lib/p2p"
+import (
+	"github.com/kardiachain/go-kardia/dualn/consensus"
+	"github.com/kardiachain/go-kardia/lib/p2p"
+)
 
 type Chain interface {
 	Start() error
@@ -9,13 +12,18 @@ type Chain interface {
 }
 
 type Service struct {
-	router *Router
-	chains []Chain
+	router   *Router
+	chains   []Chain
+	cReactor *consensus.Reactor
 }
 
 func New() *Service {
+	r := newRouter()
+	cReacter := consensus.NewReactor(r)
+
 	return &Service{
-		router: newRouter(),
+		router:   r,
+		cReactor: cReacter,
 	}
 }
 
