@@ -5,4 +5,6 @@ type Config struct {
 }
 
 type ChainConfig struct {
+	Type     string `json:"type"`
+	Endpoint string `json:"endpoint"`
 }

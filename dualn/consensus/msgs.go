@@ -1,4 +1,4 @@
-package dualn
+package consensus
 
 import (
 	"fmt"

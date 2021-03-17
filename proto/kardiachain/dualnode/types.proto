@@ -1,6 +1,16 @@
 syntax = "proto3";
 package kardiachain.dualnode;
 
+import "gogoproto/gogo.proto";
+
+
+enum ProposalType {
+    option (gogoproto.goproto_enum_stringer) = true;
+    option (gogoproto.goproto_enum_prefix)   = false;
+  
+    PROPOSAL_UNLOCK = 0 [(gogoproto.enumvalue_customname) = "ProposalUnLock"];
+    PROPOSAL_TRANSFER = 1 [(gogoproto.enumvalue_customname) = "ProposalTransfer"];
+} 
 
 message Vote {
     string hash = 1;
@@ -10,9 +20,18 @@ message Vote {
 }
 
 
+message Proposal {
+    string source = 1;
+    string destination = 2;
+    string type = 3;
+    repeated bytes args =  4;
+}
+
+
 message Message {
     oneof sum {
         Vote vote = 1;
+        Proposal unlock_proposal = 2;
     }
 }
   
