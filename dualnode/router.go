@@ -8,7 +8,7 @@ import (
 type Handler interface {
 	AddVote(vote *dproto.Vote)
 	SendVote(proposal *dproto.Proposal, chID byte, src p2p.Peer)
-	Send(proposal *dproto.Proposal)
+	ReceiveProposal(proposal *dproto.Proposal)
 }
 
 type Router struct {
@@ -27,6 +27,6 @@ func (r *Router) SendVote(proposal *dproto.Proposal, chID byte, src p2p.Peer) {
 	r.handlers[proposal.Destination].SendVote(proposal, chID, src)
 }
 
-func (r *Router) Send(proposal *dproto.Proposal) {
-	r.handlers[proposal.Destination].Send(proposal)
+func (r *Router) SendProposal(proposal *dproto.Proposal) {
+	r.handlers[proposal.Destination].ReceiveProposal(proposal)
 }
