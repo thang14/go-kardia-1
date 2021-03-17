@@ -15,6 +15,7 @@ enum ProposalType {
 
 message Vote {
     string hash = 1;
+    string destination = 2;
     bytes validator_address = 6;
     uint32 validator_index   = 7;
     bytes signature         = 8;

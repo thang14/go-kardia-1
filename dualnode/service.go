@@ -1,7 +1,7 @@
 package dualn
 
 import (
-	"github.com/kardiachain/go-kardia/dualn/consensus"
+	"github.com/kardiachain/go-kardia/dualnode/consensus"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 )
 
