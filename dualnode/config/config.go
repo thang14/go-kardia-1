@@ -2,6 +2,7 @@ package config
 
 type Config struct {
 	Chains []ChainConfig
+	API    string
 }
 
 type ChainConfig struct {

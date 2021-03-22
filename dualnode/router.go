@@ -1,4 +1,4 @@
-package dualn
+package dualnode
 
 import (
 	"github.com/kardiachain/go-kardia/lib/p2p"

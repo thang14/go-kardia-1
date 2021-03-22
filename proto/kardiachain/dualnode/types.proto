@@ -2,6 +2,7 @@ syntax = "proto3";
 package kardiachain.dualnode;
 
 import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
 
 
 enum ProposalType {
@@ -11,6 +12,15 @@ enum ProposalType {
     PROPOSAL_UNLOCK = 0 [(gogoproto.enumvalue_customname) = "ProposalUnLock"];
     PROPOSAL_TRANSFER = 1 [(gogoproto.enumvalue_customname) = "ProposalTransfer"];
     PROPOSAL_MIN_LOCK = 2 [(gogoproto.enumvalue_customname) = "ProposalMintLock"];
+} 
+
+
+enum DepositStatus {
+    option (gogoproto.goproto_enum_stringer) = true;
+    option (gogoproto.goproto_enum_prefix)   = false;
+  
+    DEPOSIT_PENDING = 0 [(gogoproto.enumvalue_customname) = "DepositPending"];
+    DEPOSIT_DONE = 1 [(gogoproto.enumvalue_customname) = "DepositDone"];
 } 
 
 message Vote {
@@ -27,6 +37,21 @@ message Proposal {
     string destination = 2;
     ProposalType type = 3;
     repeated bytes args =  4;
+}
+
+message Deposit {
+    bytes hash = 1;
+    int64 source = 2;
+    int64 destination = 3;
+    bytes token = 4;
+    int64 deposit_id = 5;
+    bytes depositor = 6;
+    bytes recipient = 7;
+    bytes amount = 8;
+    DepositStatus status = 9;
+    repeated bytes signatures = 10;
+    google.protobuf.Timestamp    created_at     = 11 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+    google.protobuf.Timestamp    completed_at     = 12 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }
 
 message Message {
