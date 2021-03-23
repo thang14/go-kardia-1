@@ -8,28 +8,23 @@ import (
 type Chain interface {
 	Start() error
 	Stop() error
-	SetRouter(router *Router)
 }
 
 type Service struct {
-	router   *Router
 	chains   []Chain
 	cReactor *consensus.Reactor
 }
 
 func New() *Service {
-	r := newRouter()
 	cReacter := consensus.NewReactor()
 
 	return &Service{
-		router:   r,
 		cReactor: cReacter,
 	}
 }
 
 func (s *Service) AddChain(chains ...Chain) {
 	for _, c := range chains {
-		c.SetRouter(s.router)
 		s.chains = append(s.chains, c)
 	}
 }

@@ -2,6 +2,8 @@ package kardiachain
 
 import (
 	"fmt"
+
+	"github.com/kardiachain/go-kardia/dualnode/consensus"
 )
 
 // type Client interface {
@@ -14,6 +16,7 @@ type Watcher struct {
 	router Router
 	//client Client
 	//store  *store.Store
+	vpool *consensus.Pool
 }
 
 func newWatcher() *Watcher {
@@ -73,9 +76,10 @@ func (w *Watcher) handleEventsForBlock(latestBlock uint64) error {
 	// 		deposit := &dproto.Deposit{
 	// 			Destination: log.Topics[1].Big().Int64(),
 	// 		}
-	// 		w.router.SendDeposit(deposit)
+	// 		w.pool.AddDeposit(deposit)
+	//      w.pool.AddVote(1)
 	// 	} else if log.Topics[0].Equal(withdrawTopicHash) {
-	// 		w.store.MarkDepositCompleted(&dproto.Deposit{})
+	// 		w.pool.MarkDepositCompleted(&dproto.Deposit{})
 	// 	}
 	// }
 

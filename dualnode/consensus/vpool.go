@@ -27,6 +27,12 @@ func (vpool *Pool) VoteFront() *clist.CElement {
 }
 
 func (vpool *Pool) AddVote(vote *dproto.Vote) error {
+	//vote, err := vpool.store.GetPendingDeposit(vote.Hash)
+
+	// verify signature
+
+	//
+
 	vpool.voteList.PushBack(vote)
 	return nil
 }

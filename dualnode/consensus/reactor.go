@@ -1,12 +1,14 @@
 package consensus
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/kardiachain/go-kardia/lib/clist"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
+	"github.com/kardiachain/go-kardia/types"
 )
 
 const (
@@ -38,10 +40,31 @@ func NewReactor() *Reactor {
 	return newReactor()
 }
 
+func (r *Reactor) broadcastNewDeposit(deposit *dproto.Deposit) {
+	msg := &dproto.Message{
+		Sum: &dproto.Message_NewDeposit{
+			NewDeposit: &dproto.NewDeposit{ChainId: deposit.Destination, DepositId: deposit.DepositId},
+		},
+	}
+
+	msgBytes, err := EncodeMsg(msg)
+	if err != nil {
+		panic(err)
+	}
+	r.Switch.Broadcast(DualChannel, msgBytes)
+}
+
 // SetLogger sets the Logger on the reactor and the underlying Evidence.
 func (r *Reactor) SetLogger(l log.Logger) {
 	r.Logger = l
 	r.vpool.SetLogger(l)
+}
+
+// InitPeer implements Reactor by creating a state for the peer.
+func (r *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
+	peerState := NewPeerState(peer).SetLogger(r.Logger)
+	peer.Set(types.PeerStateKey, peerState)
+	return peer
 }
 
 // AddPeer implements Reactor.
@@ -59,12 +82,20 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		return
 	}
 
+	// Get peer states
+	ps, ok := src.Get(types.PeerStateKey).(*PeerState)
+	if !ok {
+		panic(fmt.Sprintf("Peer %v has no state", src))
+	}
+
 	switch msg := msg.(type) {
 	case *dproto.Vote:
 		if err := r.vpool.AddVote(msg); err != nil {
 			r.Switch.StopPeerForError(src, err)
 			return
 		}
+	case *dproto.NewDeposit:
+		ps.Deposit[msg.ChainId] = msg.DepositId
 	}
 
 }
@@ -91,15 +122,17 @@ func (r *Reactor) broadcastVoteRoutine(peer p2p.Peer) {
 			return
 		}
 
-		vote := next.Value.(*dproto.Vote)
-		voteBytes, err := vote.Marshal()
-		if err != nil {
-			panic(err)
-		}
-		success := peer.Send(DualChannel, voteBytes)
-		if !success {
-			time.Sleep(peerRetryMessageIntervalMS * time.Millisecond)
-			continue
+		vote := r.prepareVoteMsg(peer, next.Value.(*dproto.Vote))
+		if vote != nil {
+			voteBytes, err := vote.Marshal()
+			if err != nil {
+				panic(err)
+			}
+			success := peer.Send(DualChannel, voteBytes)
+			if !success {
+				time.Sleep(peerRetryMessageIntervalMS * time.Millisecond)
+				continue
+			}
 		}
 
 		afterCh := time.After(time.Second * broadcastEvidenceIntervalS)
@@ -119,6 +152,26 @@ func (r *Reactor) broadcastVoteRoutine(peer p2p.Peer) {
 	}
 }
 
+func (evR Reactor) prepareVoteMsg(
+	peer p2p.Peer,
+	vote *dproto.Vote,
+) *dproto.Vote {
+	peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
+	if !ok {
+		// Peer does not have a state yet. We set it in the consensus reactor, but
+		// when we add peer in Switch, the order we call reactors#AddPeer is
+		// different every time due to us using a map. Sometimes other reactors
+		// will be initialized before the consensus reactor. We should wait a few
+		// milliseconds and retry.
+		return nil
+	}
+
+	if peerState.Deposit[vote.Destination] != vote.DepositId {
+		return nil
+	}
+	return vote
+}
+
 // GetChannels implements Reactor
 func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
@@ -130,4 +183,26 @@ func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvMessageCapacity: MaxMsgSize,
 		},
 	}
+}
+
+type PeerState struct {
+	peer    p2p.Peer
+	logger  log.Logger
+	Deposit map[int64]int64
+}
+
+// NewPeerState returns a new PeerState for the given Peer
+func NewPeerState(peer p2p.Peer) *PeerState {
+	return &PeerState{
+		peer:    peer,
+		logger:  log.NewNopLogger(),
+		Deposit: map[int64]int64{},
+	}
+}
+
+// SetLogger allows to set a logger on the peer state. Returns the peer state
+// itself.
+func (ps *PeerState) SetLogger(logger log.Logger) *PeerState {
+	ps.logger = logger
+	return ps
 }

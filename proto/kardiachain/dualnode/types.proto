@@ -24,20 +24,14 @@ enum DepositStatus {
 } 
 
 message Vote {
-    string hash = 1;
-    string destination = 2;
+    bytes hash = 1;
+    int64 destination = 2;
     bytes validator_address = 6;
     uint32 validator_index   = 7;
     bytes signature         = 8;
+    int64 deposit_id = 9;
 }
 
-
-message Proposal {
-    string source = 1;
-    string destination = 2;
-    ProposalType type = 3;
-    repeated bytes args =  4;
-}
 
 message Deposit {
     bytes hash = 1;
@@ -57,7 +51,12 @@ message Deposit {
 message Message {
     oneof sum {
         Vote vote = 1;
-        Proposal proposal = 2;
+        NewDeposit new_deposit = 2;
     }
 }
-  
+
+
+message NewDeposit {
+    int64 chain_id = 1;
+    int64 deposit_id = 2;
+}

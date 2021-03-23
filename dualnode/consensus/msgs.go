@@ -13,8 +13,8 @@ func EncodeMsg(pb proto.Message) ([]byte, error) {
 	switch pb := pb.(type) {
 	case *dproto.Vote:
 		msg.Sum = &dproto.Message_Vote{Vote: pb}
-	case *dproto.Proposal:
-		msg.Sum = &dproto.Message_Proposal{Proposal: pb}
+	case *dproto.NewDeposit:
+		msg.Sum = &dproto.Message_NewDeposit{NewDeposit: pb}
 	}
 
 	bz, err := proto.Marshal(&msg)
@@ -36,8 +36,8 @@ func DecodeMsg(bz []byte) (proto.Message, error) {
 	switch msg := pb.Sum.(type) {
 	case *dproto.Message_Vote:
 		return msg.Vote, nil
-	case *dproto.Message_Proposal:
-		return msg.Proposal, nil
+	case *dproto.Message_NewDeposit:
+		return msg.NewDeposit, nil
 	default:
 		return nil, fmt.Errorf("unknown message type %T", msg)
 	}
