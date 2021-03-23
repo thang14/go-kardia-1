@@ -19,7 +19,7 @@ type Service struct {
 
 func New() *Service {
 	r := newRouter()
-	cReacter := consensus.NewReactor(r)
+	cReacter := consensus.NewReactor()
 
 	return &Service{
 		router:   r,

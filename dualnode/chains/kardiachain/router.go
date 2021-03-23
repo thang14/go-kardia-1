@@ -5,6 +5,6 @@ import (
 )
 
 type Router interface {
-	SendProposal(proposal *dproto.Proposal)
+	SendDeposit(deposit *dproto.Deposit)
 	Register(chainID string, handler *Handler)
 }

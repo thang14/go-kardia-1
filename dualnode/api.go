@@ -2,13 +2,13 @@ package dualnode
 
 import (
 	"github.com/kardiachain/go-kardia/dualnode/store"
-	"github.com/kardiachain/go-kardia/dualnode/types"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 type API struct {
 	store *store.Store
 }
 
-func (api *API) GetDeposit(hash string) (*types.Deposit, error) {
-	return api.store.GetDeposit(hash)
+func (api *API) GetDeposit(hash []byte) (*dproto.Deposit, error) {
+	return api.store.GetPendingDeposit(hash)
 }

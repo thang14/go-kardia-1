@@ -1,10 +1,19 @@
 package kardiachain
 
-import "fmt"
+import (
+	"fmt"
+)
+
+// type Client interface {
+// 	FilterLogs(ctx context.Context, q kardia.FilterQuery) ([]types.Log, error)
+// 	LatestBlockNumber(ctx context.Context) (uint64, error)
+// }
 
 type Watcher struct {
 	quit   chan struct{}
 	router Router
+	//client Client
+	//store  *store.Store
 }
 
 func newWatcher() *Watcher {
@@ -32,12 +41,43 @@ func (w *Watcher) stop() error {
 }
 
 func (w *Watcher) watch() error {
+	//retry := 0
 	for {
 		select {
 		case <-w.quit:
 			return nil
 		default:
+			// if retry == 0 {
+			// 	return fmt.Errorf("max retry")
+			// }
 
+			// if err := w.handleEventsForBlock(100); err != nil {
+			// 	retry--
+			// 	continue
+			// }
 		}
 	}
+}
+
+func (w *Watcher) handleEventsForBlock(latestBlock uint64) error {
+	// logs, err := w.client.FilterLogs(context.Background(), kardia.FilterQuery{})
+	// if err != nil {
+	// 	return err
+	// }
+
+	// depositTopicHash := crypto.Keccak256Hash([]byte("Deposit(uint256 destination)"))
+	// withdrawTopicHash := crypto.Keccak256Hash([]byte("Withdraw(uint256 destination)"))
+
+	// for _, log := range logs {
+	// 	if log.Topics[0].Equal(depositTopicHash) {
+	// 		deposit := &dproto.Deposit{
+	// 			Destination: log.Topics[1].Big().Int64(),
+	// 		}
+	// 		w.router.SendDeposit(deposit)
+	// 	} else if log.Topics[0].Equal(withdrawTopicHash) {
+	// 		w.store.MarkDepositCompleted(&dproto.Deposit{})
+	// 	}
+	// }
+
+	return nil
 }

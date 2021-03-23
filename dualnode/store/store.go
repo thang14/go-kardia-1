@@ -1,10 +1,10 @@
 package store
 
 import (
+	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/kardiachain/go-kardia/kai/kaidb"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
