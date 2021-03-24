@@ -20,6 +20,7 @@ package filters
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/kardiachain/go-kardia/kai/events"
 	"github.com/kardiachain/go-kardia/lib/bloombits"
@@ -218,7 +219,8 @@ func (f *Filter) unindexedLogs(ctx context.Context, end uint64) ([]*types.Log, e
 		}
 		blockInfo := f.backend.BlockInfoByBlockHash(ctx, header.Hash())
 		if blockInfo == nil {
-			return nil, ErrBlockInfoNotFound
+			fmt.Printf("block info is missing, blockHeight: %v\n", header.Height)
+			continue
 		}
 		found, err := f.blockLogs(ctx, header, blockInfo)
 		if err != nil {
