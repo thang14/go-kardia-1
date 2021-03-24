@@ -4,12 +4,15 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/kardiachain/go-kardia/kai/kaidb"
+	"github.com/kardiachain/go-kardia/lib/common"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 const (
 	baseKeyPending   = byte(0x01)
 	baseKeyCompleted = byte(0x02)
+
+	keyValidatorSet = byte(0x02)
 )
 
 var (
@@ -88,6 +91,27 @@ func (s *Store) MarkDepositCompleted(deposit *dproto.Deposit, height int64) erro
 		return err
 	}
 	return s.db.Put(keyCompleted(deposit), dbytes)
+}
+
+func (s *Store) AddValidator(chainID uint64, addr common.Address) error {
+	return nil
+}
+
+func (s *Store) RemoveValidator(chainID uint64, addr common.Address) error {
+	return nil
+}
+
+func (s *Store) HasValidator(chainID int64, addr []byte) bool {
+	return false
+}
+
+func (s *Store) AddVote(vote *dproto.Vote) error {
+	return nil
+}
+
+func (s *Store) GetValidatorSet(chainID uint64) ([]common.Address, error) {
+	validatorSet := make([]common.Address, 0)
+	return validatorSet, nil
 }
 
 func keyPending(deposit *dproto.Deposit) []byte {

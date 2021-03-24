@@ -14,3 +14,7 @@ type privValidator struct {
 func (p *privValidator) SignVote(vote *dproto.Vote) error {
 	return nil
 }
+
+func voteSignBytes(vote *dproto.Vote) {
+
+}

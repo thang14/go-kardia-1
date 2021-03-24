@@ -175,10 +175,14 @@ func (evR Reactor) prepareVoteMsg(
 }
 
 func (r *Reactor) signAddVote(deposit *dproto.Deposit) error {
+	if err := types.DepositHash(deposit); err != nil {
+		return err
+	}
 	vote := &dproto.Vote{
-		Hash:        []byte("hash"),
-		Destination: deposit.Destination,
-		DepositId:   deposit.DepositId,
+		Hash:             deposit.Hash,
+		Destination:      deposit.Destination,
+		DepositId:        deposit.DepositId,
+		ValidatorAddress: nil,
 	}
 
 	if err := r.privValidator.SignVote(vote); err != nil {
