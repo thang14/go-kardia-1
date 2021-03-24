@@ -44,3 +44,7 @@ func (vpool *Pool) MakeDepositCompleted(deposit *dproto.Deposit) error {
 func (vpool *Pool) AddDeposit(deposit *dproto.Deposit) error {
 	return vpool.store.SetDeposit(deposit)
 }
+
+func (vpool *Pool) PendingDeposit() ([]*dproto.Deposit, error) {
+	return vpool.store.PendingDeposit()
+}

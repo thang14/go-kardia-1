@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/clist"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
-	"github.com/kardiachain/go-kardia/types"
+	ktypes "github.com/kardiachain/go-kardia/types"
 )
 
 const (
@@ -25,8 +26,9 @@ const (
 
 type Reactor struct {
 	p2p.BaseReactor
-	logger log.Logger
-	vpool  *Pool
+	logger        log.Logger
+	vpool         *Pool
+	privValidator types.PrivValidator
 }
 
 func newReactor() *Reactor {
@@ -63,7 +65,7 @@ func (r *Reactor) SetLogger(l log.Logger) {
 // InitPeer implements Reactor by creating a state for the peer.
 func (r *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 	peerState := NewPeerState(peer).SetLogger(r.Logger)
-	peer.Set(types.PeerStateKey, peerState)
+	peer.Set(ktypes.PeerStateKey, peerState)
 	return peer
 }
 
@@ -83,7 +85,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	}
 
 	// Get peer states
-	ps, ok := src.Get(types.PeerStateKey).(*PeerState)
+	ps, ok := src.Get(ktypes.PeerStateKey).(*PeerState)
 	if !ok {
 		panic(fmt.Sprintf("Peer %v has no state", src))
 	}
@@ -156,7 +158,7 @@ func (evR Reactor) prepareVoteMsg(
 	peer p2p.Peer,
 	vote *dproto.Vote,
 ) *dproto.Vote {
-	peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
+	peerState, ok := peer.Get(ktypes.PeerStateKey).(PeerState)
 	if !ok {
 		// Peer does not have a state yet. We set it in the consensus reactor, but
 		// when we add peer in Switch, the order we call reactors#AddPeer is
@@ -166,10 +168,25 @@ func (evR Reactor) prepareVoteMsg(
 		return nil
 	}
 
-	if peerState.Deposit[vote.Destination] != vote.DepositId {
+	if peerState.Deposit[vote.Destination] >= vote.DepositId {
 		return nil
 	}
 	return vote
+}
+
+func (r *Reactor) signAddVote(deposit *dproto.Deposit) error {
+	vote := &dproto.Vote{
+		Hash:        []byte("hash"),
+		Destination: deposit.Destination,
+		DepositId:   deposit.DepositId,
+	}
+
+	if err := r.privValidator.SignVote(vote); err != nil {
+		return err
+	}
+
+	r.vpool.AddVote(vote)
+	return nil
 }
 
 // GetChannels implements Reactor
@@ -196,7 +213,7 @@ func NewPeerState(peer p2p.Peer) *PeerState {
 	return &PeerState{
 		peer:    peer,
 		logger:  log.NewNopLogger(),
-		Deposit: map[int64]int64{},
+		Deposit: make(map[int64]int64, 0),
 	}
 }
 
