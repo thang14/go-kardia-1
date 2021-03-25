@@ -10,7 +10,7 @@ import (
 type Chain interface {
 	Start() error
 	Stop() error
-	setState(state *consensus.State)
+	SetState(state *consensus.State)
 }
 
 type Service struct {
@@ -36,7 +36,7 @@ func New() *Service {
 
 func (s *Service) AddChain(chains ...Chain) {
 	for _, c := range chains {
-		c.setState(s.state)
+		c.SetState(s.state)
 		s.chains = append(s.chains, c)
 	}
 }
