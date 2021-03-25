@@ -1,22 +1,13 @@
 package store
 
 import (
-	"github.com/gogo/protobuf/proto"
-	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/kardiachain/go-kardia/kai/kaidb"
-	"github.com/kardiachain/go-kardia/lib/common"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 const (
 	baseKeyPending   = byte(0x01)
 	baseKeyCompleted = byte(0x02)
-
-	keyValidatorSet = byte(0x02)
-)
-
-var (
-	depositKey = []byte("deposit:")
 )
 
 type Store struct {
@@ -81,37 +72,11 @@ func (s *Store) listDeposit(keyPrefix byte) ([]*dproto.Deposit, error) {
 	return deposits, nil
 }
 
-func (s *Store) MarkDepositCompleted(deposit *dproto.Deposit, height int64) error {
+func (s *Store) MarkDepositCompleted(deposit *dproto.Deposit) error {
 	if err := s.db.Delete(keyPending(deposit)); err != nil {
 		return err
 	}
-	h := gogotypes.Int64Value{Value: height}
-	dbytes, err := proto.Marshal(&h)
-	if err != nil {
-		return err
-	}
-	return s.db.Put(keyCompleted(deposit), dbytes)
-}
-
-func (s *Store) AddValidator(chainID uint64, addr common.Address) error {
-	return nil
-}
-
-func (s *Store) RemoveValidator(chainID uint64, addr common.Address) error {
-	return nil
-}
-
-func (s *Store) HasValidator(chainID int64, addr []byte) bool {
-	return false
-}
-
-func (s *Store) AddVote(vote *dproto.Vote) error {
-	return nil
-}
-
-func (s *Store) GetValidatorSet(chainID uint64) ([]common.Address, error) {
-	validatorSet := make([]common.Address, 0)
-	return validatorSet, nil
+	return s.db.Put(keyCompleted(deposit), []byte{0x01})
 }
 
 func keyPending(deposit *dproto.Deposit) []byte {
