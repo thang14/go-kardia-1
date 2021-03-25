@@ -28,6 +28,7 @@ type Reactor struct {
 	p2p.BaseReactor
 	logger        log.Logger
 	vpool         *Pool
+	state         *State
 	privValidator types.PrivValidator
 }
 
@@ -92,7 +93,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	switch msg := msg.(type) {
 	case *dproto.Vote:
-		if err := r.vpool.AddVote(msg); err != nil {
+		if err := r.state.addVote(msg); err != nil {
 			r.Switch.StopPeerForError(src, err)
 			return
 		}
@@ -172,25 +173,6 @@ func (evR Reactor) prepareVoteMsg(
 		return nil
 	}
 	return vote
-}
-
-func (r *Reactor) signAddVote(deposit *dproto.Deposit) error {
-	if err := types.DepositHash(deposit); err != nil {
-		return err
-	}
-	vote := &dproto.Vote{
-		Hash:             deposit.Hash,
-		Destination:      deposit.Destination,
-		DepositId:        deposit.DepositId,
-		ValidatorAddress: nil,
-	}
-
-	if err := r.privValidator.SignVote(vote); err != nil {
-		return err
-	}
-
-	r.vpool.AddVote(vote)
-	return nil
 }
 
 // GetChannels implements Reactor

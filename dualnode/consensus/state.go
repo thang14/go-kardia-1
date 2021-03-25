@@ -14,8 +14,24 @@ type ChainState struct {
 	validators []common.Address
 }
 
+func newChainState() *ChainState {
+	return &ChainState{
+		votes:      make([]dproto.Vote, 0),
+		validators: []common.Address{},
+	}
+}
+
 func (cv *ChainState) AddVote(vote *dproto.Vote) {
 	cv.votes = append(cv.votes, *vote)
+}
+
+func (cv *ChainState) HasVote(vote *dproto.Vote) bool {
+	for _, v := range cv.votes {
+		if bytes.Equal(v.Hash, vote.Hash) {
+			return true
+		}
+	}
+	return false
 }
 
 func (cv *ChainState) RemoveVoteByHash(hash []byte) {
@@ -39,25 +55,50 @@ func (cv *ChainState) Signatures(hash []byte) [][]byte {
 }
 
 type State struct {
-	chains        map[int64]*ChainState
-	vpool         *Pool
-	store         *store.Store
-	privValidator types.PrivValidator
+	chains          map[int64]*ChainState
+	vpool           *Pool
+	store           *store.Store
+	privValidator   types.PrivValidator
+	pendingDeposits map[string]*dproto.Deposit
 }
 
-func NewState(vpool *Pool, store *store.Store) *State {
-	return &State{
+func NewState(vpool *Pool, store *store.Store) (*State, error) {
+	state := &State{
 		vpool:  vpool,
 		store:  store,
 		chains: make(map[int64]*ChainState),
 	}
+
+	pendingDeposits, err := store.PendingDeposit()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range pendingDeposits {
+		state.pendingDeposits[string(d.Hash)] = d
+	}
+
+	return state, nil
+}
+
+func (s *State) getChain(chainID int64) *ChainState {
+	if s.chains[chainID] == nil {
+		s.chains[chainID] = newChainState()
+	}
+	return s.chains[chainID]
 }
 
 func (s *State) addVote(vote *dproto.Vote) error {
-	if s.chains[vote.Destination] == nil {
-		s.chains[vote.Destination] = &ChainState{}
+	if s.pendingDeposits[string(vote.Hash)] == nil {
+		return nil
 	}
-	s.chains[vote.Destination].AddVote(vote)
+
+	chain := s.getChain(vote.Destination)
+	if chain.HasVote(vote) == true {
+		return nil
+	}
+
+	chain.AddVote(vote)
 	s.vpool.AddVote(vote)
 	return nil
 }
@@ -67,6 +108,10 @@ func (s *State) signVote(vote *dproto.Vote) error {
 }
 
 func (s *State) AddDeposit(d *dproto.Deposit) error {
+	if s.pendingDeposits[string(d.Hash)] == nil {
+		return nil
+	}
+
 	if err := s.store.SetDeposit(d); err != nil {
 		return err
 	}
@@ -81,10 +126,11 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 
 func (s *State) MarkDepositComplete(d *dproto.Deposit) error {
 	s.vpool.MakeDepositCompleted(d)
-	s.chains[d.Destination].RemoveVoteByHash(d.Hash)
+	s.getChain(d.Destination).RemoveVoteByHash(d.Hash)
+	delete(s.pendingDeposits, string(d.Hash))
 	return s.store.MarkDepositCompleted(d)
 }
 
 func (s *State) GetDepositSignatures(d *dproto.Deposit) [][]byte {
-	return s.chains[d.Destination].Signatures(d.Hash)
+	return s.getChain(d.Destination).Signatures(d.Hash)
 }
