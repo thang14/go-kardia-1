@@ -32,15 +32,15 @@ type Reactor struct {
 	privValidator types.PrivValidator
 }
 
-func newReactor() *Reactor {
+func newReactor(state *State) *Reactor {
 	r := &Reactor{}
 	r.BaseReactor = *p2p.NewBaseReactor("DualReactor", r)
 	return r
 }
 
 // NewReactor creates a new reactor instance.
-func NewReactor() *Reactor {
-	return newReactor()
+func NewReactor(state *State) *Reactor {
+	return newReactor(state)
 }
 
 func (r *Reactor) broadcastNewDeposit(deposit *dproto.Deposit) {

@@ -14,6 +14,10 @@ type Store struct {
 	db kaidb.Database
 }
 
+func New(db kaidb.Database) *Store {
+	return &Store{db: db}
+}
+
 func (s *Store) GetPendingDeposit(hash []byte) (*dproto.Deposit, error) {
 	buf, err := s.db.Get(keyPending(&dproto.Deposit{Hash: hash}))
 	if err != nil {

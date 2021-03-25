@@ -13,6 +13,10 @@ type Pool struct {
 	voteList *clist.CList // concurrent linked-list of evidence
 }
 
+func NewPool() *Pool {
+	return &Pool{}
+}
+
 // SetLogger sets the Logger.
 func (vpool *Pool) SetLogger(l log.Logger) {
 	vpool.logger = l

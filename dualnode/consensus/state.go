@@ -10,8 +10,9 @@ import (
 )
 
 type ChainState struct {
-	votes      []dproto.Vote
-	validators []common.Address
+	votes         []dproto.Vote
+	validators    []common.Address
+	lastDepositID int64
 }
 
 func newChainState() *ChainState {
@@ -52,6 +53,10 @@ func (cv *ChainState) Signatures(hash []byte) [][]byte {
 		}
 	}
 	return signs
+}
+
+func (cv *ChainState) SetLastDepositID(depositID int64) {
+	cv.lastDepositID = depositID
 }
 
 type State struct {
@@ -120,7 +125,7 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 	if err := s.signVote(vote); err != nil {
 		return err
 	}
-
+	s.getChain(d.Destination).SetLastDepositID(d.DepositId)
 	return s.addVote(vote)
 }
 
