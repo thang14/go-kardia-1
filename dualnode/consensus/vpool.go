@@ -14,7 +14,9 @@ type Pool struct {
 }
 
 func NewPool() *Pool {
-	return &Pool{}
+	return &Pool{
+		voteList: clist.New(),
+	}
 }
 
 // SetLogger sets the Logger.

@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
@@ -18,7 +19,7 @@ type ChainState struct {
 func newChainState() *ChainState {
 	return &ChainState{
 		votes:      make([]dproto.Vote, 0),
-		validators: []common.Address{},
+		validators: make([]common.Address, 0),
 	}
 }
 
@@ -65,13 +66,16 @@ type State struct {
 	store           *store.Store
 	privValidator   types.PrivValidator
 	pendingDeposits map[string]*dproto.Deposit
+	depositHashMap  map[string]string
 }
 
 func NewState(vpool *Pool, store *store.Store) (*State, error) {
 	state := &State{
-		vpool:  vpool,
-		store:  store,
-		chains: make(map[int64]*ChainState),
+		vpool:           vpool,
+		store:           store,
+		chains:          make(map[int64]*ChainState),
+		pendingDeposits: make(map[string]*dproto.Deposit),
+		depositHashMap:  make(map[string]string),
 	}
 
 	pendingDeposits, err := store.PendingDeposit()
@@ -113,15 +117,24 @@ func (s *State) signVote(vote *dproto.Vote) error {
 }
 
 func (s *State) AddDeposit(d *dproto.Deposit) error {
-	if s.pendingDeposits[string(d.Hash)] == nil {
+	hash := string(d.Hash)
+
+	if s.pendingDeposits[hash] != nil {
 		return nil
 	}
+
+	s.depositHashMap[depositKey(d.Destination, d.DepositId)] = hash
+	s.pendingDeposits[hash] = d
 
 	if err := s.store.SetDeposit(d); err != nil {
 		return err
 	}
 
-	vote := &dproto.Vote{}
+	vote := &dproto.Vote{
+		Hash:        d.Hash,
+		Destination: d.Destination,
+		DepositId:   d.DepositId,
+	}
 	if err := s.signVote(vote); err != nil {
 		return err
 	}
@@ -133,9 +146,23 @@ func (s *State) MarkDepositComplete(d *dproto.Deposit) error {
 	s.vpool.MakeDepositCompleted(d)
 	s.getChain(d.Destination).RemoveVoteByHash(d.Hash)
 	delete(s.pendingDeposits, string(d.Hash))
+	delete(s.depositHashMap, depositKey(d.Destination, d.DepositId))
 	return s.store.MarkDepositCompleted(d)
 }
 
 func (s *State) GetDepositSignatures(d *dproto.Deposit) [][]byte {
 	return s.getChain(d.Destination).Signatures(d.Hash)
+}
+
+func (s *State) GetDepositByID(chainID, depositID int64) *dproto.Deposit {
+	k := s.depositHashMap[depositKey(chainID, depositID)]
+	return s.pendingDeposits[k]
+}
+
+func (s *State) SetPrivValidator(priv types.PrivValidator) {
+	s.privValidator = priv
+}
+
+func depositKey(chainID, depositID int64) string {
+	return fmt.Sprintf("%d:%d", chainID, depositID)
 }
