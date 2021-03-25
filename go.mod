@@ -17,9 +17,8 @@ require (
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-stack/stack v1.8.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/protobuf v1.4.3
+	github.com/golang/protobuf v1.5.1
 	github.com/google/cel-go v0.3.2
-	github.com/google/go-cmp v0.5.2 // indirect
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1

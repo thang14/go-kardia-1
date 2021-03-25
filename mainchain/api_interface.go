@@ -67,7 +67,7 @@ type APIBackend interface {
 func (k *KardiaService) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) *types.Header {
 	// Return the latest block if rpc.LatestBlockNumber has been passed in
 	if number == rpc.LatestBlockNumber {
-		return k.blockchain.CurrentBlock().Header()
+		return k.blockchain.GetHeaderByHeight(k.blockchain.CurrentBlock().Header().Height - 1)
 	}
 	return k.blockchain.GetHeaderByHeight(number.Uint64())
 }
