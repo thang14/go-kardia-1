@@ -92,6 +92,103 @@ type Node struct {
 	pexReactor *pex.Reactor
 }
 
+func NewBasic(conf *Config) (*Node, error) {
+	// Copy config and resolve the datadir so future changes to the current
+	// working directory don't affect the node.
+	confCopy := *conf
+	conf = &confCopy
+	if conf.DataDir != "" {
+		absdatadir, err := filepath.Abs(conf.DataDir)
+		if err != nil {
+			return nil, err
+		}
+		conf.DataDir = absdatadir
+	}
+	// Ensure that the instance name doesn't cause weird conflicts with
+	// other files in the data directory.
+	if strings.ContainsAny(conf.Name, `/\`) {
+		return nil, errors.New(`Config.Name must not contain '/' or '\'`)
+	}
+	if conf.Name == datadirDefaultKeyStore {
+		return nil, errors.New(`Config.Name cannot be "` + datadirDefaultKeyStore + `"`)
+	}
+	if strings.HasSuffix(conf.Name, ".ipc") {
+		return nil, errors.New(`Config.Name cannot end in ".ipc"`)
+	}
+	logger := conf.Logger
+	if logger == nil {
+		logger = log.New()
+	}
+
+	// Setup Transport.
+	//transport, peerFilters := createTransport(conf, nodeInfo, nodeKey)
+
+	// Note: any interaction with Config that would create/touch files
+	// in the data directory or instance directory is delayed until Start.
+	node := &Node{
+		config:       conf,
+		serviceFuncs: []ServiceConstructor{},
+		ipcEndpoint:  conf.IPCEndpoint(),
+		httpEndpoint: conf.HTTPEndpoint(),
+		wsEndpoint:   conf.WSEndpoint(),
+		eventmux:     new(event.TypeMux),
+	}
+
+	if err := node.openDataDir(); err != nil {
+		return nil, err
+	}
+
+	db, err := node.OpenDatabase("dualchaindata", 16, 32, "dualchaindata")
+	if err != nil {
+		return nil, err
+	}
+
+	nodeKey := &p2p.NodeKey{PrivKey: conf.NodeKey()}
+
+	if err != nil {
+		return nil, err
+	}
+
+	nodeInfo := p2p.DefaultNodeInfo{}
+
+	// Setup Transport.
+	transport, peerFilters := createTransport(conf, nodeInfo, nodeKey)
+
+	// Setup Switch.
+	sw := createSwitch(
+		conf, transport, peerFilters, nodeInfo, nodeKey, logger,
+	)
+
+	err = sw.AddPersistentPeers(splitAndTrimEmpty(conf.P2P.PersistentPeers, ",", " "))
+	if err != nil {
+		return nil, fmt.Errorf("could not add peers from persistent_peers field: %w", err)
+	}
+
+	err = sw.AddUnconditionalPeerIDs(splitAndTrimEmpty(conf.P2P.UnconditionalPeerIDs, ",", " "))
+	if err != nil {
+		return nil, fmt.Errorf("could not add peer ids from unconditional_peer_ids field: %w", err)
+	}
+
+	addrBook, err := createAddrBookAndSetOnSwitch(conf, sw, logger, nodeKey)
+	if err != nil {
+		return nil, fmt.Errorf("could not create addrbook: %w", err)
+	}
+
+	var pexReactor *pex.Reactor
+	if conf.P2P.PexReactor {
+		pexReactor = createPEXReactorAndAddToSwitch(addrBook, conf, sw, logger)
+	}
+
+	node.sw = sw
+	node.blockStore = db
+	node.nodeKey = nodeKey
+	node.transport = transport
+	node.addrBook = addrBook
+	node.pexReactor = pexReactor
+	node.BaseService = *service.NewBaseService(logger, "Node", node)
+	return node, nil
+}
+
 // New creates a new P2P node, ready for protocol registration.
 func New(conf *Config) (*Node, error) {
 	// Copy config and resolve the datadir so future changes to the current
@@ -231,7 +328,6 @@ func (n *Node) Register(constructor ServiceConstructor) error {
 func (n *Node) OnStart() error {
 	n.lock.Lock()
 	defer n.lock.Unlock()
-
 	// Start the transport.
 	addr, err := p2p.NewNetAddressString(p2p.IDAddressString(n.nodeKey.ID(), n.config.P2P.ListenAddress))
 	if err != nil {
@@ -268,24 +364,26 @@ func (n *Node) OnStart() error {
 			return &DuplicateServiceError{Kind: kind}
 		}
 		services[kind] = service
+
 	}
 
 	// Start each of the services
 	var started []reflect.Type
 	for kind, service := range services {
+
 		// Start the next service, stopping all previous upon failure
 		if err := service.Start(n.sw); err != nil {
+
 			for _, kind := range started {
 				_ = services[kind].Stop()
 			}
 			_ = n.sw.Stop()
-
 			return err
 		}
 		// Mark the service started for potential cleanup
 		started = append(started, kind)
-	}
 
+	}
 	// Lastly start the configured RPC interfaces
 	if err := n.startRPC(services); err != nil {
 		for _, service := range services {

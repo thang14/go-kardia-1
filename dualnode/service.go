@@ -65,7 +65,14 @@ func (s *Service) Stop() error {
 }
 
 func (s *Service) APIs() []rpc.API {
-	return []rpc.API{}
+	return []rpc.API{
+		{
+			Namespace: "tx",
+			Version:   "1.0",
+			Service:   NewAPI(s),
+			Public:    true,
+		},
+	}
 }
 
 func (s *Service) DB() types.StoreDB {

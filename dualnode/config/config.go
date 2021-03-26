@@ -9,8 +9,9 @@ import (
 )
 
 type Config struct {
-	Chains []ChainConfig `yaml:"chains"`
-	Node   *node.Config  `yaml:"node"`
+	Chains   []ChainConfig `yaml:"chains"`
+	Node     *node.Config  `yaml:"node"`
+	LogLevel string        `yaml:"log_level"` // crit, error, warn, info, debug, trace
 }
 
 type Contract struct {
@@ -36,7 +37,8 @@ func TestDualETHChainConfig() *ChainConfig {
 
 func DefaultConfig() *Config {
 	return &Config{
-		Node: node.GetDefaultConfig(),
+		LogLevel: "info",
+		Node:     node.GetDefaultConfig(),
 		Chains: []ChainConfig{
 			ChainConfig{
 				Type:     configs.KAISymbol,

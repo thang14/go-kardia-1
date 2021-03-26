@@ -1,14 +1,14 @@
 package dualnode
 
-import (
-	"github.com/kardiachain/go-kardia/dualnode/store"
-	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
-)
-
 type API struct {
-	store *store.Store
+	service *Service
 }
 
-func (api *API) GetDeposit(hash []byte) (*dproto.Deposit, error) {
-	return api.store.GetPendingDeposit(hash)
+func (api *API) GetDepositSignatures(hash []byte) ([][]byte, error) {
+	return nil, nil
+}
+
+// NewPublicTransactionAPI is a constructor of PublicTransactionAPI
+func NewAPI(service *Service) *API {
+	return &API{service}
 }

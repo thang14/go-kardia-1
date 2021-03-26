@@ -5,6 +5,7 @@ import (
 
 	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/crypto"
+	"github.com/kardiachain/go-kardia/lib/log"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
@@ -19,6 +20,12 @@ type privValidator struct {
 }
 
 func (p *privValidator) SignVote(vote *dproto.Vote) error {
+	sig, err := crypto.Sign(vote.Hash, p.privKey)
+	if err != nil {
+		log.Trace("Signing vote failed", "err", err)
+		return err
+	}
+	vote.Signature = sig
 	return nil
 }
 
