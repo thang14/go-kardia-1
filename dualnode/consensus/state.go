@@ -7,6 +7,7 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/common"
+	kevents "github.com/kardiachain/go-kardia/lib/events"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
@@ -67,6 +68,9 @@ type State struct {
 	privValidator   types.PrivValidator
 	pendingDeposits map[string]*dproto.Deposit
 	depositHashMap  map[string]string
+	// Synchronous pubsub between consensus state and manager.
+	// State only emits EventNewRoundStep, EventVote and EventProposalHeartbeat
+	evsw kevents.EventSwitch
 }
 
 func NewState(vpool *Pool, store *store.Store) (*State, error) {
@@ -76,6 +80,7 @@ func NewState(vpool *Pool, store *store.Store) (*State, error) {
 		chains:          make(map[int64]*ChainState),
 		pendingDeposits: make(map[string]*dproto.Deposit),
 		depositHashMap:  make(map[string]string),
+		evsw:            kevents.NewEventSwitch(),
 	}
 
 	pendingDeposits, err := store.PendingDeposit()
@@ -140,6 +145,7 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 		return err
 	}
 	s.getChain(d.Destination).SetLastDepositID(d.DepositId)
+	s.evsw.FireEvent("deposit", d)
 	return s.addVote(vote)
 }
 

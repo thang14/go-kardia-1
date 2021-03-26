@@ -6,6 +6,7 @@ import (
 
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/clist"
+	kevents "github.com/kardiachain/go-kardia/lib/events"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
@@ -41,6 +42,32 @@ func newReactor(state *State) *Reactor {
 // NewReactor creates a new reactor instance.
 func NewReactor(state *State) *Reactor {
 	return newReactor(state)
+}
+
+func (conR *Reactor) OnStart() error {
+	conR.subscribeToBroadcastEvents()
+	return nil
+}
+
+// OnStop implements BaseService by unsubscribing from events and stopping
+// state.
+func (conR *Reactor) OnStop() {
+	conR.unsubscribeFromBroadcastEvents()
+}
+
+func (conR *Reactor) subscribeToBroadcastEvents() {
+	const subscriber = "consensus-reactor"
+	if err := conR.state.evsw.AddListenerForEvent(subscriber, "deposit",
+		func(data kevents.EventData) {
+			conR.broadcastNewDeposit(data.(*dproto.Deposit))
+		}); err != nil {
+		conR.Logger.Error("Error adding listener for events", "err", err)
+	}
+}
+
+func (conR *Reactor) unsubscribeFromBroadcastEvents() {
+	const subscriber = "consensus-reactor"
+	conR.state.evsw.RemoveListener(subscriber)
 }
 
 func (r *Reactor) broadcastNewDeposit(deposit *dproto.Deposit) {
