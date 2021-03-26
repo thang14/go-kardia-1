@@ -29,7 +29,7 @@ func (cv *ChainState) AddVote(vote *dproto.Vote) {
 
 func (cv *ChainState) HasVote(vote *dproto.Vote) bool {
 	for _, v := range cv.votes {
-		if bytes.Equal(v.Hash, vote.Hash) {
+		if bytes.Equal(v.ValidatorAddress, vote.ValidatorAddress) {
 			return true
 		}
 	}
@@ -131,9 +131,10 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 	}
 
 	vote := &dproto.Vote{
-		Hash:        d.Hash,
-		Destination: d.Destination,
-		DepositId:   d.DepositId,
+		Hash:             d.Hash,
+		Destination:      d.Destination,
+		DepositId:        d.DepositId,
+		ValidatorAddress: s.privValidator.GetAddress().Bytes(),
 	}
 	if err := s.signVote(vote); err != nil {
 		return err

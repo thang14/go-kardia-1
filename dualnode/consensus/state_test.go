@@ -35,6 +35,20 @@ func TestAddDeposit(t *testing.T) {
 	signs := state.GetDepositSignatures(deposit)
 	assert.Equal(t, len(signs), 1)
 
+	// add other vote
+	vote := &kardiachain_dualnode.Vote{
+		Hash:             deposit.Hash,
+		Destination:      deposit.Destination,
+		DepositId:        deposit.DepositId,
+		ValidatorAddress: []byte("0x2"),
+	}
+	state.addVote(vote)
+	// no add duplicated vote
+	state.addVote(vote)
+
+	signs = state.GetDepositSignatures(deposit)
+	assert.Equal(t, len(signs), 2)
+
 	// mark deposit completed
 	err = state.MarkDepositComplete(deposit)
 	assert.NoError(t, err)
