@@ -70,14 +70,27 @@ func (conR *Reactor) unsubscribeFromBroadcastEvents() {
 	conR.state.evsw.RemoveListener(subscriber)
 }
 
-func (r *Reactor) broadcastNewDeposit(deposit *dproto.Deposit) {
-	msg := &dproto.Message{
-		Sum: &dproto.Message_NewDeposit{
-			NewDeposit: &dproto.NewDeposit{ChainId: deposit.Destination, DepositId: deposit.DepositId},
+func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
+	msg := makePeerStateMsg(conR.state)
+	msgBytes, err := EncodeMsg(msg)
+	if err != nil {
+		panic(err)
+	}
+	peer.Send(DualChannel, msgBytes)
+}
+
+func makePeerStateMsg(state *State) *dproto.Message {
+	return &dproto.Message{
+		Sum: &dproto.Message_PeerState{
+			PeerState: &dproto.PeerState{
+				LastDeposit: state.GetDepositState(),
+			},
 		},
 	}
+}
 
-	msgBytes, err := EncodeMsg(msg)
+func (r *Reactor) broadcastNewDeposit(deposit *dproto.Deposit) {
+	msgBytes, err := EncodeMsg(makePeerStateMsg(r.state))
 	if err != nil {
 		panic(err)
 	}
@@ -124,8 +137,8 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 			r.Switch.StopPeerForError(src, err)
 			return
 		}
-	case *dproto.NewDeposit:
-		ps.Deposit[msg.ChainId] = msg.DepositId
+	case *dproto.PeerState:
+		ps.Deposit = msg.LastDeposit
 	}
 
 }

@@ -90,6 +90,12 @@ func NewState(vpool *Pool, store *store.Store) (*State, error) {
 
 	for _, d := range pendingDeposits {
 		state.pendingDeposits[string(d.Hash)] = d
+
+		// update last deposit id of the chain
+		chain := state.getChain(d.Destination)
+		if chain.lastDepositID < d.DepositId {
+			chain.lastDepositID = d.DepositId
+		}
 	}
 
 	return state, nil
@@ -168,6 +174,14 @@ func (s *State) GetDepositByID(chainID, depositID int64) *dproto.Deposit {
 
 func (s *State) SetPrivValidator(priv types.PrivValidator) {
 	s.privValidator = priv
+}
+
+func (s *State) GetDepositState() map[int64]int64 {
+	depositState := make(map[int64]int64, 0)
+	for k, v := range s.chains {
+		depositState[k] = v.lastDepositID
+	}
+	return depositState
 }
 
 func depositKey(chainID, depositID int64) string {
