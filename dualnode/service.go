@@ -1,10 +1,13 @@
 package dualnode
 
 import (
+	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/consensus"
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
 	"github.com/kardiachain/go-kardia/lib/p2p"
+	"github.com/kardiachain/go-kardia/rpc"
+	"github.com/kardiachain/go-kardia/types"
 )
 
 type Chain interface {
@@ -19,7 +22,7 @@ type Service struct {
 	cReactor *consensus.Reactor
 }
 
-func New() *Service {
+func New(cfg *config.Config) (*Service, error) {
 	db := memorydb.New()
 	s := store.New(db)
 	vpool := consensus.NewPool()
@@ -31,7 +34,7 @@ func New() *Service {
 	return &Service{
 		cReactor: cReacter,
 		state:    cState,
-	}
+	}, nil
 }
 
 func (s *Service) AddChain(chains ...Chain) {
@@ -58,5 +61,13 @@ func (s *Service) Stop() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *Service) APIs() []rpc.API {
+	return []rpc.API{}
+}
+
+func (s *Service) DB() types.StoreDB {
 	return nil
 }

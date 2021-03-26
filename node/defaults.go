@@ -44,25 +44,29 @@ const (
 )
 
 // DefaultConfig contains reasonable default settings.
-var DefaultConfig = Config{
-	DataDir:             configs.DefaultDataDir(),
-	HTTPPort:            DefaultHTTPPort,
-	HTTPModules:         []string{"node", "kai", "tx", "account", "dual", "neo"},
-	HTTPVirtualHosts:    []string{"0.0.0.0", "localhost"},
-	HTTPCors:            []string{"*"},
-	HTTPTimeouts:        rpc.DefaultHTTPTimeouts,
-	WSPort:              DefaultWSPort,
-	WSModules:           []string{"node", "kai", "tx", "account", "dual", "neo"},
-	GraphQLPort:         DefaultGraphQLPort,
-	GraphQLVirtualHosts: []string{"localhost"},
-	P2P:                 configs.DefaultP2PConfig(),
-	MainChainConfig: MainChainConfig{
-		ServiceName: KardiaServiceName,
-		ChainId:     MainChainID,
-		NetworkId:   DefaultNetworkID,
-		AcceptTxs:   1, // 1 is to allow new transactions, 0 is not
-	},
-	DualChainConfig: DualChainConfig{
-		DBInfo: storage.NewLevelDbInfo(DualChainDataDir, DefaultDbCache, DefaultDbHandles),
-	},
+var DefaultConfig = *GetDefaultConfig()
+
+func GetDefaultConfig() *Config {
+	return &Config{
+		DataDir:             configs.DefaultDataDir(),
+		HTTPPort:            DefaultHTTPPort,
+		HTTPModules:         []string{"node", "kai", "tx", "account", "dual", "neo"},
+		HTTPVirtualHosts:    []string{"0.0.0.0", "localhost"},
+		HTTPCors:            []string{"*"},
+		HTTPTimeouts:        rpc.DefaultHTTPTimeouts,
+		WSPort:              DefaultWSPort,
+		WSModules:           []string{"node", "kai", "tx", "account", "dual", "neo"},
+		GraphQLPort:         DefaultGraphQLPort,
+		GraphQLVirtualHosts: []string{"localhost"},
+		P2P:                 configs.DefaultP2PConfig(),
+		MainChainConfig: MainChainConfig{
+			ServiceName: KardiaServiceName,
+			ChainId:     MainChainID,
+			NetworkId:   DefaultNetworkID,
+			AcceptTxs:   1, // 1 is to allow new transactions, 0 is not
+		},
+		DualChainConfig: DualChainConfig{
+			DBInfo: storage.NewLevelDbInfo(DualChainDataDir, DefaultDbCache, DefaultDbHandles),
+		},
+	}
 }
