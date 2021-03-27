@@ -10,6 +10,10 @@ import (
 	"github.com/kardiachain/go-kardia/node"
 )
 
+var (
+	DefaultDir = ".dualnode"
+)
+
 type Config struct {
 	Chains   []ChainConfig `yaml:"chains"`
 	Node     *node.Config  `yaml:"node"`
@@ -36,7 +40,7 @@ func RopstenDualETHChainConfig() *ChainConfig {
 	}
 	return &ChainConfig{
 		Type:     configs.ETHSymbol,
-		ChainID:  "0x3",
+		ChainID:  2,
 		Endpoint: "https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900",
 
 		SwapSMC: &Contract{
@@ -68,17 +72,15 @@ func DefaultConfig() *Config {
 		LogLevel: "info",
 		Node:     node.GetDefaultConfig(),
 		Chains: []ChainConfig{
-			ChainConfig{
+			{
 				Type:     configs.KAISymbol,
 				ChainID:  1,
 				Endpoint: "1",
-				SwapSMCs: make(map[string]*Contract),
 			},
-			ChainConfig{
+			{
 				Type:     configs.ETHSymbol,
 				ChainID:  1,
 				Endpoint: "1",
-				SwapSMCs: make(map[string]*Contract),
 			},
 		},
 	}

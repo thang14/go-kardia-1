@@ -17,14 +17,12 @@ func NewRunNodeCmd() *cobra.Command {
 				return err
 			}
 			n.Register(func(ctx *node.ServiceContext) (node.Service, error) {
-				return dualnode.New(cfg)
+				return dualnode.New(ctx, cfg)
 			})
-			forver := make(chan bool, 0)
 			if err := n.Start(); err != nil {
 				return err
 			}
-			<-forver
-			return nil
+			select {}
 		},
 	}
 	return cmd
