@@ -6,6 +6,7 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
 	"github.com/kardiachain/go-kardia/lib/p2p"
+	"github.com/kardiachain/go-kardia/node"
 	"github.com/kardiachain/go-kardia/rpc"
 	"github.com/kardiachain/go-kardia/types"
 )
@@ -22,7 +23,7 @@ type Service struct {
 	cReactor *consensus.Reactor
 }
 
-func New(cfg *config.Config) (*Service, error) {
+func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 	db := memorydb.New()
 	s := store.New(db)
 	vpool := consensus.NewPool()
