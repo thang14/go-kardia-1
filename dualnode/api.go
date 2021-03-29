@@ -1,14 +1,14 @@
 package dualnode
 
-type API struct {
+type BridgeAPI struct {
 	service *Service
 }
 
-func (api *API) GetDepositSignatures(hash []byte) ([][]byte, error) {
-	return nil, nil
+func (api *BridgeAPI) Signs(chainID int64, depositID int64) ([][]byte, error) {
+	return api.service.Signs(chainID, depositID), nil
 }
 
-// NewPublicTransactionAPI is a constructor of PublicTransactionAPI
-func NewAPI(service *Service) *API {
-	return &API{service}
+// BriNewBridgeAPIdgeAPI is a constructor of BridgeAPI
+func NewBridgeAPI(service *Service) *BridgeAPI {
+	return &BridgeAPI{service}
 }

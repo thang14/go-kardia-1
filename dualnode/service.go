@@ -68,9 +68,9 @@ func (s *Service) Stop() error {
 func (s *Service) APIs() []rpc.API {
 	return []rpc.API{
 		{
-			Namespace: "tx",
+			Namespace: "bridge",
 			Version:   "1.0",
-			Service:   NewAPI(s),
+			Service:   NewBridgeAPI(s),
 			Public:    true,
 		},
 	}
@@ -78,4 +78,13 @@ func (s *Service) APIs() []rpc.API {
 
 func (s *Service) DB() types.StoreDB {
 	return nil
+}
+
+func (s *Service) Signs(chainId int64, depositID int64) [][]byte {
+	d := s.state.GetDepositByID(chainId, depositID)
+	if d == nil {
+		return nil
+	}
+
+	return s.state.Signs(d)
 }
