@@ -37,16 +37,19 @@ func bindFlagsLoadViper(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func prepareBaseCmd(cmd *cobra.Command, args []string) error {
+func prepareBaseCmd(cmd *cobra.Command, defaultHome string) *cobra.Command {
 	cmd.PersistentFlags().StringP(HomeFlag, "", config.DefaultDir, "directory for config and data")
-	return bindFlagsLoadViper(cmd, args)
+	cmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		bindFlagsLoadViper(cmd, args)
+	}
+	return cmd
 }
 
 func main() {
 	rootCmd := cmd.RootCmd
 	// Create & start node
 	rootCmd.AddCommand(cmd.NewRunNodeCmd())
-	rootCmd.PersistentPreRunE = prepareBaseCmd
+	rootCmd = prepareBaseCmd(rootCmd, config.DefaultDir)
 	if err := rootCmd.Execute(); err != nil {
 		panic(err)
 	}

@@ -133,7 +133,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	switch msg := msg.(type) {
 	case *dproto.Vote:
-		if err := r.state.addVote(msg); err != nil {
+		if err := r.state.AddVote(msg); err != nil {
 			r.Switch.StopPeerForError(src, err)
 			return
 		}

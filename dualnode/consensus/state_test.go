@@ -32,7 +32,7 @@ func TestAddDeposit(t *testing.T) {
 	deposit := state.GetDepositByID(2, 3)
 	assert.Equal(t, deposit.Hash, depositRecord.Hash)
 
-	signs := state.GetDepositSignatures(deposit)
+	signs := state.Signs(deposit)
 	assert.Equal(t, len(signs), 1)
 
 	// add other vote
@@ -46,13 +46,13 @@ func TestAddDeposit(t *testing.T) {
 	// no add duplicated vote
 	state.addVote(vote)
 
-	signs = state.GetDepositSignatures(deposit)
+	signs = state.Signs(deposit)
 	assert.Equal(t, len(signs), 2)
 
 	// mark deposit completed
 	err = state.MarkDepositComplete(deposit)
 	assert.NoError(t, err)
 
-	signs = state.GetDepositSignatures(deposit)
+	signs = state.Signs(deposit)
 	assert.Equal(t, len(signs), 0)
 }
