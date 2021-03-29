@@ -1,6 +1,9 @@
 package dualnode
 
 import (
+	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum"
+	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain"
+
 	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/consensus"
 	"github.com/kardiachain/go-kardia/dualnode/store"
@@ -32,10 +35,22 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 		panic(err)
 	}
 	cReacter := consensus.NewReactor(cState)
-	return &Service{
+	service := &Service{
 		cReactor: cReacter,
 		state:    cState,
-	}, nil
+	}
+
+	for _, chainConfig := range cfg.Chains {
+		var chain Chain
+		if chainConfig.Type == "eth" {
+			chain = ethereum.NewChain(&chainConfig)
+		} else {
+			chain = kardiachain.NewChain(&chainConfig)
+		}
+		service.AddChain(chain)
+	}
+
+	return service, nil
 }
 
 func (s *Service) AddChain(chains ...Chain) {

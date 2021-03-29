@@ -7,4 +7,15 @@ node:
     seeds:
       - c1fe56e3f58d3244f606306611a5d10c8333f1f6@0.0.0.0:3060
       - 7cefc13b6e2aedeedfb7cb6c32457240746baee5@0.0.0.0:3061
-      - ff3dac4f04ddbd24de5d6039f90596f0a8bb08fd@0.0.0.0:3062 
+      - ff3dac4f04ddbd24de5d6039f90596f0a8bb08fd@0.0.0.0:3062
+chains:
+  - type: eth
+    endpoint: https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900
+    swapSMC:
+      address: c1fe56e3f58d3244f606306611a5d10c8333f1f6
+      abi: ""
+  - type: kai
+    endpoint: http://10.10.0.251:8545
+    swapSMC:
+      address: c1fe56e3f58d3244f606306611a5d10c8333f1f6
+      abi: ""

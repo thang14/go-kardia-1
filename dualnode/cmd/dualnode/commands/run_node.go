@@ -16,6 +16,7 @@ func NewRunNodeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			n.Register(func(ctx *node.ServiceContext) (node.Service, error) {
 				return dualnode.New(ctx, cfg)
 			})

@@ -209,7 +209,7 @@ func (evR Reactor) prepareVoteMsg(
 		return nil
 	}
 
-	if peerState.Deposit[vote.Destination] >= vote.DepositId {
+	if peerState.Deposit[vote.Destination] < vote.DepositId {
 		return nil
 	}
 	return vote
