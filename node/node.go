@@ -149,7 +149,10 @@ func NewBasic(conf *Config) (*Node, error) {
 		return nil, err
 	}
 
-	nodeInfo := p2p.DefaultNodeInfo{}
+	nodeInfo, err := makeBasicNodeInfo(conf, nodeKey)
+	if err != nil {
+		return nil, err
+	}
 
 	// Setup Transport.
 	transport, peerFilters := createTransport(conf, nodeInfo, nodeKey)
@@ -940,4 +943,39 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *Config,
 	pexReactor.SetLogger(logger)
 	sw.AddReactor("PEX", pexReactor)
 	return pexReactor
+}
+
+func makeBasicNodeInfo(
+	config *Config,
+	nodeKey *p2p.NodeKey,
+) (p2p.NodeInfo, error) {
+	nodeInfo := p2p.DefaultNodeInfo{
+		ProtocolVersion: p2p.NewProtocolVersion(
+			uint64(1), // global
+			uint64(1),
+			uint64(1),
+		),
+		DefaultNodeID: nodeKey.ID(),
+		Network:       "dualnode",
+		Version:       nodeVersion,
+		Moniker:       config.Name,
+	}
+
+	if config.P2P.PexReactor {
+		nodeInfo.Channels = append(nodeInfo.Channels, pex.PexChannel)
+	}
+	if config.FastSync != nil {
+		nodeInfo.Channels = append(nodeInfo.Channels, blockchain.BlockchainChannel)
+	}
+
+	lAddr := config.P2P.ExternalAddress
+
+	if lAddr == "" {
+		lAddr = config.P2P.ListenAddress
+	}
+
+	nodeInfo.ListenAddr = lAddr
+
+	err := nodeInfo.Validate()
+	return nodeInfo, err
 }

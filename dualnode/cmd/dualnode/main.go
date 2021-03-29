@@ -39,10 +39,25 @@ func bindFlagsLoadViper(cmd *cobra.Command, args []string) error {
 
 func prepareBaseCmd(cmd *cobra.Command, defaultHome string) *cobra.Command {
 	cmd.PersistentFlags().StringP(HomeFlag, "", config.DefaultDir, "directory for config and data")
-	cmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		bindFlagsLoadViper(cmd, args)
-	}
+	cmd.PersistentPreRunE = concatCobraCmdFuncs(bindFlagsLoadViper, cmd.PersistentPreRunE)
 	return cmd
+}
+
+type cobraCmdFunc func(cmd *cobra.Command, args []string) error
+
+// Returns a single function that calls each argument function in sequence
+// RunE, PreRunE, PersistentPreRunE, etc. all have this same signature
+func concatCobraCmdFuncs(fs ...cobraCmdFunc) cobraCmdFunc {
+	return func(cmd *cobra.Command, args []string) error {
+		for _, f := range fs {
+			if f != nil {
+				if err := f(cmd, args); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
 }
 
 func main() {

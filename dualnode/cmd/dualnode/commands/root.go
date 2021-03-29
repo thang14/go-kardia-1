@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/lib/crypto"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,7 +23,6 @@ var RootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
 		level, err := log.LvlFromString(cfg.LogLevel)
 		if err != nil {
 			fmt.Printf("invalid log level argument, default to INFO: %v \n", err)
@@ -41,5 +41,16 @@ func ParseConfig() (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if conf.Key != "" {
+		conf.Node.P2P.PrivateKey, err = crypto.HexToECDSA(conf.Key)
+	} else {
+		conf.Node.P2P.PrivateKey, err = crypto.GenerateKey()
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
 	return conf, nil
 }

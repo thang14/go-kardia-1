@@ -3,13 +3,14 @@ package configs
 import (
 	"crypto/ecdsa"
 	"errors"
-	"github.com/kardiachain/go-kardia/lib/common"
-	"github.com/kardiachain/go-kardia/lib/crypto"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/kardiachain/go-kardia/lib/common"
+	"github.com/kardiachain/go-kardia/lib/crypto"
 )
 
 const (
@@ -33,14 +34,14 @@ type P2PConfig struct { //nolint: maligned
 	RootDir    string            `mapstructure:"home"`
 
 	// Address to listen for incoming connections
-	ListenAddress string `mapstructure:"laddr"`
+	ListenAddress string `mapstructure:"laddr" yaml:"laddr"`
 
 	// Address to advertise to peers for them to dial
 	ExternalAddress string `mapstructure:"external_address"`
 
 	// Comma separated list of seed nodes to connect to
 	// We only use these if we can’t connect to peers in the addrbook
-	Seeds []string `mapstructure:"seeds"`
+	Seeds []string `mapstructure:"seeds" yaml:"seeds"`
 
 	// Comma separated list of nodes to keep persistent connections to
 	PersistentPeers string `mapstructure:"persistent_peers"`

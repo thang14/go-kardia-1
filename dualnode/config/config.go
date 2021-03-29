@@ -17,7 +17,8 @@ var (
 type Config struct {
 	Chains   []ChainConfig `yaml:"chains"`
 	Node     *node.Config  `yaml:"node"`
-	LogLevel string        `yaml:"log_level"` // crit, error, warn, info, debug, trace
+	LogLevel string        `yaml:"logLevel"` // crit, error, warn, info, debug, trace
+	Key      string        `yaml:"key"`
 }
 
 type Contract struct {
@@ -27,7 +28,7 @@ type Contract struct {
 
 type ChainConfig struct {
 	Type     string `yaml:"type"`
-	ChainID  int64  `yaml:"chain_id"`
+	ChainID  int64  `yaml:"chainId"`
 	Endpoint string `yaml:"endpoint"`
 
 	SwapSMC *Contract `json:"swapSMC"`

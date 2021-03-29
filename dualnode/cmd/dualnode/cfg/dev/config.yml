@@ -1,0 +1,10 @@
+logLevel: debug
+key: 8843ebcb1021b00ae9a644db6617f9c6d870e5fd53624cefe374c1d2d710fd06
+node:
+  name: dualnodev1
+  p2p:
+    laddr: tcp://0.0.0.0:3060
+    seeds:
+      - c1fe56e3f58d3244f606306611a5d10c8333f1f6@0.0.0.0:3060
+      - 7cefc13b6e2aedeedfb7cb6c32457240746baee5@0.0.0.0:3061
+      - ff3dac4f04ddbd24de5d6039f90596f0a8bb08fd@0.0.0.0:3062 
