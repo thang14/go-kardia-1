@@ -8,17 +8,17 @@ import (
 	"github.com/ethereum/go-ethereum"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 
+	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
-	"github.com/kardiachain/go-kardia/lib/abi"
+	dualTypes "github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/common"
-	"github.com/kardiachain/go-kardia/types"
 )
 
 type Watcher struct {
 	quit chan struct{}
 
 	client *ETHLightClient
-	events chan *abi.Event
+	events chan *dualTypes.DualEvent
 
 	checkpoint uint64
 	dualTopics [][]ethCommon.Hash
@@ -28,7 +28,7 @@ func newWatcher(client *ETHLightClient) *Watcher {
 	return &Watcher{
 		quit:   make(chan struct{}, 1),
 		client: client,
-		events: make(chan *abi.Event, dualCfg.DualEventChanSize),
+		events: make(chan *dualTypes.DualEvent, dualCfg.DualEventChanSize),
 	}
 }
 
@@ -75,26 +75,43 @@ func (w *Watcher) watch() error {
 
 		case <-pollingEventsCh:
 			// read dual events from filtered logs
-			logs, err := w.GetLatestDualEvents()
+			dualEvents, err := w.GetLatestDualEvents()
 			if err != nil {
 				w.client.logger.Warn("Cannot get latest dual events", "err", err, "checkpoint", w.checkpoint)
 				continue
 			}
 			// send dual events to events channel
-			for _, log := range logs {
-				decodedLog, err := w.client.SwapSMC.ABI.EventByID(log.Topics[0])
+			for i := range dualEvents {
+				decodedEvent, err := w.client.SwapSMC.ABI.EventByID(dualEvents[i].Topics[0])
 				if err != nil {
-					w.client.logger.Warn("Cannot decode dual event", "err", err, "checkpoint", w.checkpoint, "log", log)
+					w.client.logger.Warn("Cannot decode dual event", "err", err, "checkpoint", w.checkpoint, "event", dualEvents[i])
 					continue
 				}
-				w.events <- decodedLog
+				// extend event data to current dual events
+				dualEvents[i].ID = decodedEvent.ID
+				dualEvents[i].RawName = decodedEvent.RawName
+				dualEvents[i].Inputs = decodedEvent.Inputs
+				dualEvents[i].Sig = decodedEvent.Sig
+
+				// unpack event arguments
+				dualEvents[i].Arguments, dualEvents[i].Source, dualEvents[i].Destination, err = dualCmn.UnpackDualEventIntoMap(w.client.ABI,
+					dualEvents[i], w.client.ChainConfig.ChainID)
+				if err != nil {
+					w.client.logger.Warn("Cannot unpack dual event", "err", err, "dualEvent", dualEvents[i])
+					continue
+				}
+
+				// send qualified to dual event channel for further actions
+				if dualEvents[i].Source != -1 && dualEvents[i].Destination != -1 {
+					w.events <- dualEvents[i]
+				}
 			}
 		default:
 		}
 	}
 }
 
-func (w *Watcher) GetLatestDualEvents() ([]types.Log, error) {
+func (w *Watcher) GetLatestDualEvents() ([]*dualTypes.DualEvent, error) {
 	latestBlock, err := w.client.ETHClient.BlockByNumber(w.client.ctx, nil)
 	if err != nil {
 		w.client.logger.Error("Cannot get latest ETH block", "err", err)
@@ -122,18 +139,15 @@ func (w *Watcher) GetLatestDualEvents() ([]types.Log, error) {
 		w.client.logger.Error("Cannot get dual event", "err", err, "FromBlock", query.FromBlock.Uint64(), "ToBlock", query.ToBlock.Uint64())
 		return nil, err
 	}
-	result := make([]types.Log, len(logs))
+	result := make([]*dualTypes.DualEvent, len(logs))
 	for i := range logs {
-		result[i] = types.Log{
+		result[i] = &dualTypes.DualEvent{
+			// extract log data to current dual event
 			Address:     common.HexToAddress(logs[i].Address.Hex()),
 			Topics:      convertTopics(logs[i].Topics),
 			Data:        logs[i].Data,
 			BlockHeight: logs[i].BlockNumber,
 			TxHash:      common.BytesToHash(logs[i].TxHash.Bytes()),
-			TxIndex:     logs[i].TxIndex,
-			BlockHash:   common.BytesToHash(logs[i].BlockHash.Bytes()),
-			Index:       logs[i].Index,
-			Removed:     logs[i].Removed,
 		}
 	}
 	return result, err

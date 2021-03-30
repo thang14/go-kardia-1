@@ -5,10 +5,12 @@ import (
 )
 
 const (
-	DualEventFreq      = 5 * time.Second
-	DualEventChanSize  = 100
-	UnlockEventRawName = "Unlock"
-	LockEventRawName   = "Lock"
+	DualEventFreq               = 5 * time.Second
+	DualEventChanSize           = 100
+	UnlockEventRawName          = "Unlock"
+	LockEventRawName            = "Lock"
+	AddValidatorEventRawName    = "AddValidator"
+	RemoveValidatorEventRawName = "RemoveValidator"
 
 	SwapSMCAbi = `[
 	{
