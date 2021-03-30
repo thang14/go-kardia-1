@@ -14,14 +14,8 @@ import (
 	"github.com/kardiachain/go-kardia/types"
 )
 
-type Chain interface {
-	Start() error
-	Stop() error
-}
-
 type Service struct {
 	state    *consensus.State
-	chains   []Chain
 	cReactor *consensus.Reactor
 }
 
@@ -33,7 +27,7 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 	if err != nil {
 		panic(err)
 	}
-	cReacter := consensus.NewReactor(cState)
+	cReacter := consensus.NewReactor(cState, cfg)
 	service := &Service{
 		cReactor: cReacter,
 		state:    cState,
@@ -46,35 +40,19 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 		} else {
 			chain = kardiachain.NewChain(&chainConfig)
 		}
-		service.AddChain(chain)
+		cReacter.AddChain(chain)
 	}
 
 	return service, nil
 }
 
-func (s *Service) AddChain(chains ...Chain) {
-	for _, c := range chains {
-		s.chains = append(s.chains, c)
-	}
-}
-
 // Start implements Service, starting all internal goroutines needed by the
 // Kardia protocol implementation.
 func (s *Service) Start(srvr *p2p.Switch) error {
-	for _, c := range s.chains {
-		if err := c.Start(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
 func (s *Service) Stop() error {
-	for _, c := range s.chains {
-		if err := c.Stop(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

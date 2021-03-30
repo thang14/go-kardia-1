@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum"
+	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain"
+	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/types"
+	"github.com/kardiachain/go-kardia/lib/abi"
 	"github.com/kardiachain/go-kardia/lib/clist"
 	kevents "github.com/kardiachain/go-kardia/lib/events"
 	"github.com/kardiachain/go-kardia/lib/log"
@@ -25,27 +29,59 @@ const (
 	peerRetryMessageIntervalMS = 100
 )
 
+type Chain interface {
+	Start() error
+	Stop() error
+	Event() chan abi.Event
+}
+
 type Reactor struct {
 	p2p.BaseReactor
 	logger        log.Logger
 	vpool         *Pool
 	state         *State
 	privValidator types.PrivValidator
+	chains        []Chain
 }
 
-func newReactor(state *State) *Reactor {
+func addChainFromConfig(r *Reactor, cfg *config.Config) {
+	for _, chainConfig := range cfg.Chains {
+		var chain Chain
+		if chainConfig.Type == "eth" {
+			chain = ethereum.NewChain(&chainConfig)
+		} else {
+			chain = kardiachain.NewChain(&chainConfig)
+		}
+		r.AddChain(chain)
+	}
+}
+
+func newReactor(state *State, cfg *config.Config) *Reactor {
 	r := &Reactor{}
 	r.BaseReactor = *p2p.NewBaseReactor("DualReactor", r)
+	addChainFromConfig(r, cfg)
 	return r
 }
 
 // NewReactor creates a new reactor instance.
-func NewReactor(state *State) *Reactor {
-	return newReactor(state)
+func NewReactor(state *State, cfg *config.Config) *Reactor {
+	return newReactor(state, cfg)
+}
+
+func (c *Reactor) AddChain(chains ...Chain) {
+	c.chains = append(c.chains, chains...)
 }
 
 func (conR *Reactor) OnStart() error {
 	conR.subscribeToBroadcastEvents()
+
+	for _, chain := range conR.chains {
+		if err := chain.Start(); err != nil {
+			return err
+		}
+		go conR.processChainEvent(chain.Event())
+	}
+
 	return nil
 }
 
@@ -53,6 +89,24 @@ func (conR *Reactor) OnStart() error {
 // state.
 func (conR *Reactor) OnStop() {
 	conR.unsubscribeFromBroadcastEvents()
+	for _, chain := range conR.chains {
+		_ = chain.Stop()
+	}
+}
+
+func (c *Reactor) processChainEvent(events chan abi.Event) {
+	for {
+		select {
+		case event := <-events:
+			c.handlerChainEvent(event)
+		case <-c.Quit():
+			return
+		}
+	}
+}
+
+func (c *Reactor) handlerChainEvent(event abi.Event) {
+
 }
 
 func (conR *Reactor) subscribeToBroadcastEvents() {
