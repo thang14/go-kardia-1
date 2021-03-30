@@ -21,6 +21,7 @@ package bind
 import (
 	"context"
 	"errors"
+
 	"github.com/kardiachain/go-kardia"
 	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/event"
