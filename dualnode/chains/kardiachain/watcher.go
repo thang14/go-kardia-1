@@ -2,34 +2,43 @@ package kardiachain
 
 import (
 	"fmt"
+	"time"
 
-	"github.com/kardiachain/go-kardia/dualnode/consensus"
+	"github.com/kardiachain/go-kardia"
+	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/lib/abi"
+	"github.com/kardiachain/go-kardia/lib/common"
+	"github.com/kardiachain/go-kardia/types"
 )
 
-// type Client interface {
-// 	FilterLogs(ctx context.Context, q kardia.FilterQuery) ([]types.Log, error)
-// 	LatestBlockNumber(ctx context.Context) (uint64, error)
-// }
-
 type Watcher struct {
-	quit   chan struct{}
-	router Router
-	//client Client
-	//store  *store.Store
-	vpool *consensus.Pool
+	quit chan struct{}
+
+	client *KardiaClient
+	events chan *abi.Event
+
+	checkpoint uint64
+	dualTopics [][]common.Hash
 }
 
-func newWatcher() *Watcher {
+func newWatcher(client *KardiaClient) *Watcher {
 	return &Watcher{
-		quit: make(chan struct{}, 1),
+		quit:   make(chan struct{}, 1),
+		client: client,
+		events: make(chan *abi.Event, dualCfg.DualEventChanSize),
 	}
 }
 
-func (w *Watcher) SetRouter(r Router) {
-	w.router = r
-}
-
-func (w *Watcher) start() error {
+func (w *Watcher) Start() error {
+	// update checkpoint
+	if w.checkpoint <= 0 {
+		latestBlockHeight, err := w.client.KAIClient.BlockHeight(w.client.ctx)
+		if err != nil {
+			w.client.logger.Error("Cannot get latest Kardia block", "err", err)
+			return err
+		}
+		w.checkpoint = latestBlockHeight
+	}
 	go func() {
 		if err := w.watch(); err != nil {
 			fmt.Printf("watch blocks error: %s", err)
@@ -38,50 +47,94 @@ func (w *Watcher) start() error {
 	return nil
 }
 
-func (w *Watcher) stop() error {
+func (w *Watcher) Stop() error {
 	close(w.quit)
 	return nil
 }
 
 func (w *Watcher) watch() error {
-	//retry := 0
+	// init a ticker for polling dual events
+	var (
+		pollingEventsFreq = dualCfg.DualEventFreq
+		pollingEventsCh   = make(chan struct{}, 1)
+		pollingEventsTk   = time.NewTicker(pollingEventsFreq)
+	)
+	defer pollingEventsTk.Stop()
 	for {
 		select {
 		case <-w.quit:
 			return nil
-		default:
-			// if retry == 0 {
-			// 	return fmt.Errorf("max retry")
-			// }
+		case <-pollingEventsTk.C:
+			select {
+			case pollingEventsCh <- struct{}{}:
+			default:
+			}
 
-			// if err := w.handleEventsForBlock(100); err != nil {
-			// 	retry--
-			// 	continue
-			// }
+		case <-pollingEventsCh:
+			// read dual events from filtered logs
+			logs, err := w.GetLatestDualEvents()
+			if err != nil {
+				w.client.logger.Warn("Cannot get latest dual events", "err", err, "checkpoint", w.checkpoint)
+				continue
+			}
+			// send dual events to events channel
+			for _, log := range logs {
+				decodedLog, err := w.client.SwapSMC.ABI.EventByID(log.Topics[0])
+				if err != nil {
+					w.client.logger.Warn("Cannot decode dual event", "err", err, "checkpoint", w.checkpoint, "log", log)
+					continue
+				}
+				w.events <- decodedLog
+			}
+		default:
 		}
 	}
 }
 
-func (w *Watcher) handleEventsForBlock(latestBlock uint64) error {
-	// logs, err := w.client.FilterLogs(context.Background(), kardia.FilterQuery{})
-	// if err != nil {
-	// 	return err
-	// }
+func (w *Watcher) GetLatestDualEvents() ([]types.Log, error) {
+	latestBlock, err := w.client.KAIClient.BlockHeight(w.client.ctx)
+	if err != nil {
+		w.client.logger.Error("Cannot get latest ETH block", "err", err)
+		return nil, err
+	}
+	if w.checkpoint > latestBlock {
+		// prevent grabbing events of a block multiple times
+		return nil, nil
+	}
+	topics, err := w.getDualEventTopics()
+	if err != nil {
+		w.client.logger.Error("Cannot get dual event topics", "err", err)
+		return nil, err
+	}
+	query := kardia.FilterQuery{
+		FromBlock: w.checkpoint,
+		ToBlock:   latestBlock,
+		Addresses: []common.Address{w.client.SwapSMC.Address},
+		Topics:    topics,
+	}
+	w.checkpoint = latestBlock + 1 // increase checkpoint to prevent grabbing events of a block multiple times
+	w.client.logger.Debug("Dual events query", "query", query)
+	logs, err := w.client.KAIClient.FilterLogs(w.client.ctx, query)
+	if err != nil {
+		w.client.logger.Error("Cannot get dual event", "err", err, "FromBlock", query.FromBlock, "ToBlock", query.ToBlock)
+		return nil, err
+	}
+	return logs, err
+}
 
-	// depositTopicHash := crypto.Keccak256Hash([]byte("Deposit(uint256 destination)"))
-	// withdrawTopicHash := crypto.Keccak256Hash([]byte("Withdraw(uint256 destination)"))
-
-	// for _, log := range logs {
-	// 	if log.Topics[0].Equal(depositTopicHash) {
-	// 		deposit := &dproto.Deposit{
-	// 			Destination: log.Topics[1].Big().Int64(),
-	// 		}
-	// 		w.pool.AddDeposit(deposit)
-	//      w.pool.AddVote(1)
-	// 	} else if log.Topics[0].Equal(withdrawTopicHash) {
-	// 		w.pool.MarkDepositCompleted(&dproto.Deposit{})
-	// 	}
-	// }
-
-	return nil
+func (w *Watcher) getDualEventTopics() ([][]common.Hash, error) {
+	if w.dualTopics != nil {
+		return w.dualTopics, nil
+	}
+	var (
+		swapSMCABI = w.client.SwapSMC.ABI
+		topics     []common.Hash
+	)
+	for i := range swapSMCABI.Events {
+		topics = append(topics, swapSMCABI.Events[i].ID)
+		w.client.logger.Debug("Appending dual topics...", "topic", swapSMCABI.Events[i].ID)
+	}
+	w.dualTopics = [][]common.Hash{topics}
+	w.client.logger.Info("Dual topics", "topics", topics)
+	return w.dualTopics, nil
 }

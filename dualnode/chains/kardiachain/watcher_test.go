@@ -1,4 +1,4 @@
-package ethereum
+package kardiachain
 
 import (
 	"crypto/ecdsa"
@@ -9,12 +9,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/lib/abi"
+	"github.com/kardiachain/go-kardia/lib/abi/bind"
+	"github.com/kardiachain/go-kardia/lib/crypto"
+	"github.com/kardiachain/go-kardia/types"
 )
 
 type LockParams struct {
@@ -36,7 +35,7 @@ type UnlockParams struct {
 }
 
 func initChain() (*Watcher, *bind.BoundContract, error) {
-	client, err := NewETHLightClient(dualCfg.TestDualETHChainConfig())
+	client, err := NewKardiaClient(dualCfg.TestDualKardiaChainConfig())
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot init ETH light client, err %v", err)
 	}
@@ -49,7 +48,7 @@ func initChain() (*Watcher, *bind.BoundContract, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot parse swap SMC ABI, err %v", err)
 	}
-	return watcher, bind.NewBoundContract(watcher.client.Address, swapABI, client.ETHClient, client.ETHClient, client.ETHClient), nil
+	return watcher, bind.NewBoundContract(watcher.client.Address, swapABI, client.KAIClient, client.KAIClient, client.KAIClient), nil
 }
 
 func (w *Watcher) callLockFunctionWithParams(boundSwapSMC *bind.BoundContract, params *LockParams) (*types.Transaction, error) {
@@ -80,7 +79,7 @@ func (w *Watcher) callUnlockFunctionWithParams(boundSwapSMC *bind.BoundContract,
 func (w *Watcher) setupSender() (*bind.TransactOpts, error) {
 	privateKey, err := crypto.HexToECDSA(dualCfg.TestRopstenPrivKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error casting private key %v", err)
 	}
 
 	publicKey := privateKey.Public()
@@ -90,31 +89,26 @@ func (w *Watcher) setupSender() (*bind.TransactOpts, error) {
 	}
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	nonce, err := w.client.ETHClient.PendingNonceAt(w.client.ctx, fromAddress)
+	nonce, err := w.client.KAIClient.PendingNonceAt(w.client.ctx, fromAddress)
 	if err != nil {
-		return nil, err
-	}
-
-	gasPrice, err := w.client.ETHClient.SuggestGasPrice(w.client.ctx)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot get pending nonce at %s err %v", fromAddress.Hex(), err)
 	}
 
 	auth := bind.NewKeyedTransactor(privateKey)
-	auth.Nonce = big.NewInt(int64(nonce))
+	auth.Nonce = nonce
 	auth.Value = big.NewInt(0)      // in wei
 	auth.GasLimit = uint64(3000000) // in units
-	auth.GasPrice = gasPrice
+	auth.GasPrice = new(big.Int).SetUint64(1)
 
 	return auth, nil
 }
 
 func (w *Watcher) getLatestBlockNumber() (uint64, error) {
-	block, err := w.client.ETHClient.BlockByNumber(w.client.ctx, nil)
+	height, err := w.client.KAIClient.BlockHeight(w.client.ctx)
 	if err != nil {
 		return 0, fmt.Errorf("cannot get latest block, err %v", err)
 	}
-	return block.NumberU64(), err
+	return height, err
 }
 
 func TestCaptureLockEvent(t *testing.T) {

@@ -190,7 +190,7 @@ func NewBlockJSON(block *types.Block, blockInfo *types.BlockInfo) *BlockJSON {
 
 // BlockNumber returns current block number
 func (s *PublicKaiAPI) BlockNumber() uint64 {
-	return s.kaiService.blockchain.CurrentBlock().Height()
+	return s.kaiService.blockchain.CurrentBlock().Height() - 1
 }
 
 // GetHeaderBlockByNumber returns blockHeader by block number

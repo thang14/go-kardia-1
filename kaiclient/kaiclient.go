@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 
 	"github.com/kardiachain/go-kardia"
 	"github.com/kardiachain/go-kardia/lib/common"
@@ -70,17 +71,17 @@ func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Blo
 	return ec.getBlock(ctx, "kai_getBlockByHash", hash, true)
 }
 
-// BlockByNumber returns a block from the current canonical chain. If number is nil, the
+// BlockByHeight returns a block from the current canonical chain. If number is nil, the
 // latest known block is returned.
 //
-// Note that loading full blocks requires two requests. Use HeaderByNumber
+// Note that loading full blocks requires two requests. Use HeaderByHeight
 // if you don't need all transactions or uncle headers.
-func (ec *Client) BlockByNumber(ctx context.Context, number *rpc.BlockNumber) (*types.Block, error) {
+func (ec *Client) BlockByHeight(ctx context.Context, number *rpc.BlockNumber) (*types.Block, error) {
 	return ec.getBlock(ctx, "kai_getBlockByNumber", number, true)
 }
 
-// BlockNumber returns the most recent block number
-func (ec *Client) BlockNumber(ctx context.Context) (uint64, error) {
+// BlockHeight returns the most recent block number
+func (ec *Client) BlockHeight(ctx context.Context) (uint64, error) {
 	var result uint64
 	err := ec.c.CallContext(ctx, &result, "kai_blockNumber")
 	return result, err
@@ -137,9 +138,9 @@ func (ec *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.He
 	return head, err
 }
 
-// HeaderByNumber returns a block header from the current canonical chain. If number is
+// HeaderByHeight returns a block header from the current canonical chain. If number is
 // nil, the latest known header is returned.
-func (ec *Client) HeaderByNumber(ctx context.Context, number *rpc.BlockNumber) (*types.Header, error) {
+func (ec *Client) HeaderByHeight(ctx context.Context, number *rpc.BlockNumber) (*types.Header, error) {
 	var head *types.Header
 	err := ec.c.CallContext(ctx, &head, "kai_getBlockHeaderByNumber", number, false)
 	if err == nil && head == nil {
@@ -196,15 +197,14 @@ func (ec *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*
 	return r, err
 }
 
-func toBlockNumArg(number *big.Int) string {
-	if number == nil {
+func toBlockNumArg(number uint64) string {
+	if number == rpc.LatestBlockNumber.Uint64() {
 		return "latest"
 	}
-	pending := big.NewInt(-1)
-	if number.Cmp(pending) == 0 {
+	if number == rpc.PendingBlockNumber.Uint64() {
 		return "pending"
 	}
-	return common.EncodeBig(number)
+	return strconv.FormatUint(number, 10)
 }
 
 // SubscribeNewHead subscribes to notifications about the current blockchain head
@@ -217,9 +217,9 @@ func (ec *Client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header)
 
 // BalanceAt returns the wei balance of the given account.
 // The block number can be nil, in which case the balance is taken from the latest known block.
-func (ec *Client) BalanceAt(ctx context.Context, account common.Address, blockNumber rpc.BlockNumber) (*big.Int, error) {
+func (ec *Client) BalanceAt(ctx context.Context, account common.Address, blockNumber uint64) (*big.Int, error) {
 	var result string
-	err := ec.c.CallContext(ctx, &result, "account_balance", account, blockNumber)
+	err := ec.c.CallContext(ctx, &result, "account_balance", account, toBlockNumArg(blockNumber))
 	if err != nil {
 		return new(big.Int).SetInt64(0), err
 	}
@@ -229,7 +229,7 @@ func (ec *Client) BalanceAt(ctx context.Context, account common.Address, blockNu
 
 // StorageAt returns the value of key in the contract storage of the given account.
 // The block number can be nil, in which case the value is taken from the latest known block.
-func (ec *Client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
+func (ec *Client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber uint64) ([]byte, error) {
 	var result common.Bytes
 	err := ec.c.CallContext(ctx, &result, "account_getStorageAt", account, key, toBlockNumArg(blockNumber))
 	return result, err
@@ -237,7 +237,7 @@ func (ec *Client) StorageAt(ctx context.Context, account common.Address, key com
 
 // CodeAt returns the contract code of the given account.
 // The block number can be nil, in which case the code is taken from the latest known block.
-func (ec *Client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
+func (ec *Client) CodeAt(ctx context.Context, account common.Address, blockNumber uint64) ([]byte, error) {
 	var result common.Bytes
 	err := ec.c.CallContext(ctx, &result, "account_getCode", account, toBlockNumArg(blockNumber))
 	return result, err
@@ -245,7 +245,7 @@ func (ec *Client) CodeAt(ctx context.Context, account common.Address, blockNumbe
 
 // NonceAt returns the account nonce of the given account.
 // The block number can be nil, in which case the nonce is taken from the latest known block.
-func (ec *Client) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+func (ec *Client) NonceAt(ctx context.Context, account common.Address, blockNumber uint64) (uint64, error) {
 	var result common.Uint64
 	err := ec.c.CallContext(ctx, &result, "account_nonce", account, toBlockNumArg(blockNumber))
 	return uint64(result), err
@@ -300,6 +300,16 @@ func toFilterArg(q kardia.FilterQuery) (interface{}, error) {
 // Pending State
 // TODO(trinhdn): SubscribePendingTransactions and others pending APIs after implementation
 
+func (ec *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
+	panic("implement me")
+}
+
+func (ec *Client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+	var result uint64
+	err := ec.c.CallContext(ctx, &result, "account_nonce", account)
+	return result, err
+}
+
 // Contract Calling
 
 // CallContract executes a message call transaction, which is directly executed in the VM
@@ -308,7 +318,7 @@ func toFilterArg(q kardia.FilterQuery) (interface{}, error) {
 // blockNumber selects the block height at which the call runs. It can be nil, in which
 // case the code is taken from the latest known block. Note that state from very old
 // blocks might not be available.
-func (ec *Client) CallContract(ctx context.Context, msg kardia.CallMsg, blockNumber *big.Int) ([]byte, error) {
+func (ec *Client) CallContract(ctx context.Context, msg kardia.CallMsg, blockNumber uint64) ([]byte, error) {
 	var hex common.Bytes
 	err := ec.c.CallContext(ctx, &hex, "kai_kardiaCall", toCallArg(msg), toBlockNumArg(blockNumber))
 	if err != nil {
@@ -330,12 +340,12 @@ func (ec *Client) PendingCallContract(ctx context.Context, msg kardia.CallMsg) (
 
 // SuggestGasPrice retrieves the currently suggested gas price to allow a timely
 // execution of a transaction.
-func (ec *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	var hex common.Big
-	if err := ec.c.CallContext(ctx, &hex, "kai_gasPrice"); err != nil {
-		return nil, err
+func (ec *Client) SuggestGasPrice(ctx context.Context) (uint64, error) {
+	var gas uint64
+	if err := ec.c.CallContext(ctx, &gas, "kai_gasPrice"); err != nil {
+		return 0, err
 	}
-	return (*big.Int)(&hex), nil
+	return gas, nil
 }
 
 // EstimateGas tries to estimate the gas needed to execute a specific transaction based on
@@ -360,7 +370,7 @@ func (ec *Client) SendTransaction(ctx context.Context, tx *types.Transaction) er
 	if err != nil {
 		return err
 	}
-	return ec.c.CallContext(ctx, nil, "kai_sendRawTransaction", common.Encode(data))
+	return ec.c.CallContext(ctx, nil, "tx_sendRawTransaction", common.Encode(data))
 }
 
 func toCallArg(msg kardia.CallMsg) interface{} {
