@@ -17,7 +17,6 @@ import (
 type Chain interface {
 	Start() error
 	Stop() error
-	SetState(state *consensus.State)
 }
 
 type Service struct {
@@ -55,7 +54,6 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 
 func (s *Service) AddChain(chains ...Chain) {
 	for _, c := range chains {
-		c.SetState(s.state)
 		s.chains = append(s.chains, c)
 	}
 }
