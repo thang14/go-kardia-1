@@ -258,15 +258,15 @@ func newTestBackend(t *testing.T) (*node.Node, []*types.Block) {
 //			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 //			defer cancel()
 //
-//			got, err := ec.HeaderByNumber(ctx, tt.block)
+//			got, err := ec.HeaderByHeight(ctx, tt.block)
 //			if tt.wantErr != nil && (err == nil || err.Error() != tt.wantErr.Error()) {
-//				t.Fatalf("HeaderByNumber(%v) error = %q, want %q", tt.block, err, tt.wantErr)
+//				t.Fatalf("HeaderByHeight(%v) error = %q, want %q", tt.block, err, tt.wantErr)
 //			}
 //			if got != nil && got.Number.Sign() == 0 {
 //				got.Number = big.NewInt(0) // hack to make DeepEqual work
 //			}
 //			if !reflect.DeepEqual(got, tt.want) {
-//				t.Fatalf("HeaderByNumber(%v)\n   = %v\nwant %v", tt.block, got, tt.want)
+//				t.Fatalf("HeaderByHeight(%v)\n   = %v\nwant %v", tt.block, got, tt.want)
 //			}
 //		})
 //	}
@@ -330,11 +330,11 @@ func TestBlockNumber(t *testing.T) {
 	defer client.Close()
 	ec := NewClient(client)
 
-	blockNumber, err := ec.BlockNumber(context.Background())
+	blockNumber, err := ec.BlockHeight(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if blockNumber != 0 {
-		t.Fatalf("BlockNumber returned wrong number: %d", blockNumber)
+		t.Fatalf("BlockHeight returned wrong number: %d", blockNumber)
 	}
 }
