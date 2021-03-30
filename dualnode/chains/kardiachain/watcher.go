@@ -48,7 +48,6 @@ func (w *Watcher) Start() error {
 }
 
 func (w *Watcher) Stop() error {
-	//w.quit <- struct{}{}
 	close(w.quit)
 	return nil
 }
