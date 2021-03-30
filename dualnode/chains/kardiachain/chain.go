@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kardiachain/go-kardia/configs"
+	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/kaiclient"
 	"github.com/kardiachain/go-kardia/lib/abi"
@@ -14,7 +15,7 @@ import (
 )
 
 type Chain struct {
-	watcher *Watcher
+	watcher dualCmn.IWatcher
 
 	config *config.ChainConfig
 	client *KardiaClient
@@ -75,14 +76,14 @@ func NewKardiaClient(chainCfg *config.ChainConfig) (*KardiaClient, error) {
 }
 
 func (c *Chain) Start() error {
-	if err := c.watcher.start(); err != nil {
+	if err := c.watcher.Start(); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (c *Chain) Stop() error {
-	if err := c.watcher.stop(); err != nil {
+	if err := c.watcher.Stop(); err != nil {
 		return err
 	}
 	return nil

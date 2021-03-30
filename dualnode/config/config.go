@@ -1,11 +1,6 @@
 package config
 
 import (
-	"strings"
-
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-
 	"github.com/kardiachain/go-kardia/configs"
 	"github.com/kardiachain/go-kardia/node"
 )
@@ -22,8 +17,8 @@ type Config struct {
 }
 
 type Contract struct {
-	Address common.Address `yaml:"address"`
-	ABI     *abi.ABI
+	Address string `yaml:"address"`
+	ABI     string `yaml:"abi"`
 }
 
 type ChainConfig struct {
@@ -35,35 +30,40 @@ type ChainConfig struct {
 }
 
 func RopstenDualETHChainConfig() *ChainConfig {
-	abi, err := abi.JSON(strings.NewReader(SwapSMCAbi))
-	if err != nil {
-		panic("cannot read swap smc abi")
-	}
 	return &ChainConfig{
 		Type:     configs.ETHSymbol,
 		ChainID:  2,
 		Endpoint: "https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900",
 
 		SwapSMC: &Contract{
-			Address: common.Address{},
-			ABI:     &abi,
+			Address: "0x0",
+			ABI:     SwapSMCAbi,
 		},
 	}
 }
 
 func TestDualETHChainConfig() *ChainConfig {
-	abi, err := abi.JSON(strings.NewReader(TestSwapSMCABI))
-	if err != nil {
-		panic("cannot read swap smc abi")
-	}
 	return &ChainConfig{
 		Type:     configs.ETHSymbol,
 		ChainID:  3,
 		Endpoint: "https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900",
 
 		SwapSMC: &Contract{
-			Address: common.HexToAddress(TestSwapSMCAddress),
-			ABI:     &abi,
+			Address: TestSwapSMCAddress,
+			ABI:     TestSwapSMCABI,
+		},
+	}
+}
+
+func TestDualKardiaChainConfig() *ChainConfig {
+	return &ChainConfig{
+		Type:     configs.KAISymbol,
+		ChainID:  0,
+		Endpoint: "http://10.10.0.251:8545",
+
+		SwapSMC: &Contract{
+			Address: TestSwapSMCAddressKAITestnet,
+			ABI:     TestSwapSMCABI,
 		},
 	}
 }

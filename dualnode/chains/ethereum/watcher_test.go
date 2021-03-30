@@ -6,13 +6,11 @@ import (
 	"math/big"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
@@ -43,7 +41,7 @@ func initChain() (*Watcher, *bind.BoundContract, error) {
 		return nil, nil, fmt.Errorf("cannot init ETH light client, err %v", err)
 	}
 	watcher := newWatcher(client)
-	err = watcher.start()
+	err = watcher.Start()
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot start ETH watcher, err %v", err)
 	}
@@ -51,7 +49,7 @@ func initChain() (*Watcher, *bind.BoundContract, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot parse swap SMC ABI, err %v", err)
 	}
-	return watcher, bind.NewBoundContract(common.HexToAddress(dualCfg.TestSwapSMCAddress), swapABI, client.ETHClient, client.ETHClient, client.ETHClient), nil
+	return watcher, bind.NewBoundContract(watcher.client.Address, swapABI, client.ETHClient, client.ETHClient, client.ETHClient), nil
 }
 
 func (w *Watcher) callLockFunctionWithParams(boundSwapSMC *bind.BoundContract, params *LockParams) (*types.Transaction, error) {
@@ -129,18 +127,7 @@ func TestCaptureLockEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher.checkpoint = startHeight + 1
-	for {
-		startHeight, err = watcher.getLatestBlockNumber()
-		if err != nil {
-			t.Fatal(err)
-		}
-		assert.NotEqual(t, 0, startHeight, "cannot get latest block")
-		t.Logf("current checkpoint %v latest block number %v", watcher.checkpoint, startHeight)
-		if watcher.checkpoint <= startHeight {
-			break
-		}
-		time.Sleep(dualCfg.DualEventFreq)
-	}
+	t.Logf("current checkpoint %v latest block number %v", watcher.checkpoint, startHeight)
 	tx, err := watcher.callLockFunctionWithParams(boundSwapSMC, &LockParams{
 		token:       [32]byte{0x1},
 		destination: new(big.Int).SetInt64(1),
@@ -162,7 +149,7 @@ LOOP:
 			assert.NotEqual(t, 0, startHeight, "cannot get latest block")
 			assert.GreaterOrEqualf(t, watcher.checkpoint, startHeight, "checkpoint (%v) must be increased to greater than latest block number (%v)",
 				watcher.checkpoint, startHeight)
-			err = watcher.stop()
+			err = watcher.Stop()
 			assert.Nil(t, err, "cannot stop watcher")
 			break LOOP
 		default:
@@ -181,18 +168,7 @@ func TestCaptureUnlockEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher.checkpoint = startHeight + 1
-	for {
-		startHeight, err = watcher.getLatestBlockNumber()
-		if err != nil {
-			t.Fatal(err)
-		}
-		assert.NotEqual(t, 0, startHeight, "cannot get latest block")
-		t.Logf("current checkpoint %v latest block number %v", watcher.checkpoint, startHeight)
-		if watcher.checkpoint <= startHeight {
-			break
-		}
-		time.Sleep(dualCfg.DualEventFreq)
-	}
+	t.Logf("current checkpoint %v latest block number %v", watcher.checkpoint, startHeight)
 	tx, err := watcher.callUnlockFunctionWithParams(boundSwapSMC, &UnlockParams{
 		source:      new(big.Int).SetInt64(1),
 		destination: new(big.Int).SetInt64(2),
@@ -218,7 +194,7 @@ LOOP:
 			assert.NotEqual(t, 0, startHeight, "cannot get latest block")
 			assert.GreaterOrEqualf(t, watcher.checkpoint, startHeight, "checkpoint (%v) must be increased to greater than latest block number (%v)",
 				watcher.checkpoint, startHeight)
-			err = watcher.stop()
+			err = watcher.Stop()
 			assert.Nil(t, err, "cannot stop watcher")
 			break LOOP
 		default:

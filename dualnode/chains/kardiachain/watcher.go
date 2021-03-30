@@ -29,7 +29,7 @@ func newWatcher(client *KardiaClient) *Watcher {
 	}
 }
 
-func (w *Watcher) start() error {
+func (w *Watcher) Start() error {
 	// update checkpoint
 	if w.checkpoint <= 0 {
 		latestBlockHeight, err := w.client.KAIClient.BlockHeight(w.client.ctx)
@@ -47,7 +47,7 @@ func (w *Watcher) start() error {
 	return nil
 }
 
-func (w *Watcher) stop() error {
+func (w *Watcher) Stop() error {
 	//w.quit <- struct{}{}
 	close(w.quit)
 	return nil
@@ -114,7 +114,6 @@ func (w *Watcher) GetLatestDualEvents() ([]types.Log, error) {
 		Topics:    topics,
 	}
 	w.checkpoint = latestBlock + 1 // increase checkpoint to prevent grabbing events of a block multiple times
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ query %+v\n", query)
 	w.client.logger.Debug("Dual events query", "query", query)
 	logs, err := w.client.KAIClient.FilterLogs(w.client.ctx, query)
 	if err != nil {

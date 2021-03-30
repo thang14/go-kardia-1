@@ -353,4 +353,6 @@ var (
 ]`
 	TestSwapSMCAddress = "0x47621b9dbf7fe0ee5ed89eb36e0f15b4078f9d84" // On Ropsten network at https://ropsten.etherscan.io/tx/0xd8aa2d69027dca25004d879056ea6394fcc398cf3b4c5d45e2e427c6bfb3418c
 	TestRopstenPrivKey = "fedc1b2f43e18fb7c2e12f993cee187c8e162dd01d67a08323d9344fb49ef157"
+
+	TestSwapSMCAddressKAITestnet = "0xcBeAE3FC1B8000ae88453C12887d1C16aA111cfA"
 )

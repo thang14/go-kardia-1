@@ -40,7 +40,7 @@ func initChain() (*Watcher, *bind.BoundContract, error) {
 		return nil, nil, fmt.Errorf("cannot init ETH light client, err %v", err)
 	}
 	watcher := newWatcher(client)
-	err = watcher.start()
+	err = watcher.Start()
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot start ETH watcher, err %v", err)
 	}
@@ -143,7 +143,7 @@ LOOP:
 			assert.NotEqual(t, 0, startHeight, "cannot get latest block")
 			assert.GreaterOrEqualf(t, watcher.checkpoint, startHeight, "checkpoint (%v) must be increased to greater than latest block number (%v)",
 				watcher.checkpoint, startHeight)
-			err = watcher.stop()
+			err = watcher.Stop()
 			assert.Nil(t, err, "cannot stop watcher")
 			break LOOP
 		default:
@@ -188,7 +188,7 @@ LOOP:
 			assert.NotEqual(t, 0, startHeight, "cannot get latest block")
 			assert.GreaterOrEqualf(t, watcher.checkpoint, startHeight, "checkpoint (%v) must be increased to greater than latest block number (%v)",
 				watcher.checkpoint, startHeight)
-			err = watcher.stop()
+			err = watcher.Stop()
 			assert.Nil(t, err, "cannot stop watcher")
 			break LOOP
 		default:
