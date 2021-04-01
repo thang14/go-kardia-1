@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kardiachain/go-kardia/dualnode/store"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/kardiachain/go-kardia/configs"
 	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	"github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/abi"
 	"github.com/kardiachain/go-kardia/lib/log"
 )
@@ -63,13 +66,13 @@ func NewETHLightClient(chainCfg *config.ChainConfig) (*ETHLightClient, error) {
 	}, nil
 }
 
-func NewChain(chainCfg *config.ChainConfig) *Chain {
+func NewChain(chainCfg *config.ChainConfig, store *store.Store) *Chain {
 	ethClient, err := NewETHLightClient(chainCfg)
 	if err != nil {
 		panic(fmt.Errorf("cannot setup ETH client, err: %v", err))
 	}
 	return &Chain{
-		watcher: newWatcher(ethClient),
+		watcher: newWatcher(ethClient, store),
 
 		client: ethClient,
 		config: chainCfg,
@@ -88,4 +91,8 @@ func (c *Chain) Stop() error {
 		return err
 	}
 	return nil
+}
+
+func (c *Chain) Event() chan *types.DualEvent {
+	return c.watcher.GetDualEventsChannel()
 }

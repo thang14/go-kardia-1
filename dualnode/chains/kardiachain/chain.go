@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kardiachain/go-kardia/dualnode/store"
+
+	"github.com/kardiachain/go-kardia/dualnode/types"
+
 	"github.com/kardiachain/go-kardia/configs"
 	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	"github.com/kardiachain/go-kardia/dualnode/config"
@@ -21,13 +25,13 @@ type Chain struct {
 	client *KardiaClient
 }
 
-func NewChain(chainCfg *config.ChainConfig) *Chain {
+func NewChain(chainCfg *config.ChainConfig, store *store.Store) *Chain {
 	kaiClient, err := NewKardiaClient(chainCfg)
 	if err != nil {
 		panic(fmt.Errorf("cannot setup ETH client, err: %v", err))
 	}
 	return &Chain{
-		watcher: newWatcher(kaiClient),
+		watcher: newWatcher(kaiClient, store),
 
 		client: kaiClient,
 		config: chainCfg,
@@ -87,4 +91,8 @@ func (c *Chain) Stop() error {
 		return err
 	}
 	return nil
+}
+
+func (c *Chain) Event() chan *types.DualEvent {
+	return c.watcher.GetDualEventsChannel()
 }

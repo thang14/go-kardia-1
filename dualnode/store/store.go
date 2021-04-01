@@ -1,13 +1,17 @@
 package store
 
 import (
+	"math/big"
+
 	"github.com/kardiachain/go-kardia/kai/kaidb"
+	"github.com/kardiachain/go-kardia/lib/rlp"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 const (
-	baseKeyPending   = byte(0x01)
-	baseKeyCompleted = byte(0x02)
+	baseKeyPending    = byte(0x01)
+	baseKeyCompleted  = byte(0x02)
+	baseKeyCheckpoint = byte(0x03)
 )
 
 type Store struct {
@@ -83,10 +87,45 @@ func (s *Store) MarkDepositCompleted(deposit *dproto.Deposit) error {
 	return s.db.Put(keyCompleted(deposit), []byte{0x01})
 }
 
+func (s *Store) GetCheckpoint(chainId int64) (uint64, error) {
+	chainIdBigInt := new(big.Int).SetInt64(chainId)
+	encodedChainID, err := rlp.EncodeToBytes(chainIdBigInt)
+	if err != nil {
+		return 0, err
+	}
+	raw, err := s.db.Get(keyCheckpointByChain(encodedChainID))
+	if err != nil {
+		return 0, err
+	}
+	var checkpoint *big.Int
+	err = rlp.DecodeBytes(raw, &checkpoint)
+	if err != nil {
+		return 0, err
+	}
+	return checkpoint.Uint64(), nil
+}
+
+func (s *Store) SetCheckpoint(checkpoint uint64, chainId int64) error {
+	encodedCheckpoint, err := rlp.EncodeToBytes(checkpoint)
+	if err != nil {
+		return err
+	}
+	chainIdBigInt := new(big.Int).SetInt64(chainId)
+	encodedChainID, err := rlp.EncodeToBytes(chainIdBigInt)
+	if err != nil {
+		return err
+	}
+	return s.db.Put(keyCheckpointByChain(encodedChainID), encodedCheckpoint)
+}
+
 func keyPending(deposit *dproto.Deposit) []byte {
 	return append([]byte{baseKeyPending}, deposit.Hash...)
 }
 
 func keyCompleted(deposit *dproto.Deposit) []byte {
 	return append([]byte{baseKeyCompleted}, deposit.Hash...)
+}
+
+func keyCheckpointByChain(chainId []byte) []byte {
+	return append([]byte{baseKeyCheckpoint}, chainId...)
 }

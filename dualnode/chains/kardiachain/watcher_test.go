@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/dualnode/store"
+	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
 	"github.com/kardiachain/go-kardia/lib/abi"
 	"github.com/kardiachain/go-kardia/lib/abi/bind"
 	"github.com/kardiachain/go-kardia/lib/crypto"
@@ -39,7 +41,9 @@ func initChain() (*Watcher, *bind.BoundContract, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot init ETH light client, err %v", err)
 	}
-	watcher := newWatcher(client)
+	db := memorydb.New()
+	s := store.New(db)
+	watcher := newWatcher(client, s)
 	err = watcher.Start()
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot start ETH watcher, err %v", err)
@@ -121,6 +125,10 @@ func TestCaptureLockEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher.checkpoint = startHeight + 1
+	err = watcher.store.SetCheckpoint(watcher.checkpoint, watcher.client.ChainConfig.ChainID)
+	if err != nil {
+		t.Fatalf("Cannot set checkpoint, err: %v", err)
+	}
 	t.Logf("current checkpoint %v latest block number %v", watcher.checkpoint, startHeight)
 	tx, err := watcher.callLockFunctionWithParams(boundSwapSMC, &LockParams{
 		token:       [32]byte{0x1},
@@ -162,6 +170,10 @@ func TestCaptureUnlockEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher.checkpoint = startHeight + 1
+	err = watcher.store.SetCheckpoint(watcher.checkpoint, watcher.client.ChainConfig.ChainID)
+	if err != nil {
+		t.Fatalf("Cannot set checkpoint, err: %v", err)
+	}
 	t.Logf("current checkpoint %v latest block number %v", watcher.checkpoint, startHeight)
 	tx, err := watcher.callUnlockFunctionWithParams(boundSwapSMC, &UnlockParams{
 		source:      new(big.Int).SetInt64(1),

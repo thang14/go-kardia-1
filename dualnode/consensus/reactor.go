@@ -8,7 +8,6 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain"
 	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/types"
-	"github.com/kardiachain/go-kardia/lib/abi"
 	"github.com/kardiachain/go-kardia/lib/clist"
 	kevents "github.com/kardiachain/go-kardia/lib/events"
 	"github.com/kardiachain/go-kardia/lib/log"
@@ -32,7 +31,7 @@ const (
 type Chain interface {
 	Start() error
 	Stop() error
-	Event() chan abi.Event
+	Event() chan *types.DualEvent
 }
 
 type Reactor struct {
@@ -48,9 +47,9 @@ func addChainFromConfig(r *Reactor, cfg *config.Config) {
 	for _, chainConfig := range cfg.Chains {
 		var chain Chain
 		if chainConfig.Type == "eth" {
-			chain = ethereum.NewChain(&chainConfig)
+			chain = ethereum.NewChain(&chainConfig, r.state.store)
 		} else {
-			chain = kardiachain.NewChain(&chainConfig)
+			chain = kardiachain.NewChain(&chainConfig, r.state.store)
 		}
 		r.AddChain(chain)
 	}
@@ -94,18 +93,41 @@ func (conR *Reactor) OnStop() {
 	}
 }
 
-func (c *Reactor) processChainEvent(events chan abi.Event) {
+func (c *Reactor) processChainEvent(events chan *types.DualEvent) {
 	for {
 		select {
 		case event := <-events:
-			c.handlerChainEvent(event)
+			switch event.RawName {
+			case config.LockEventRawName:
+				c.handleLockEvent(event)
+			case config.UnlockEventRawName:
+				c.handleUnlockEvent(event)
+			case config.AddValidatorEventRawName:
+				c.handleAddValidatorEvent(event)
+			case config.RemoveValidatorEventRawName:
+				c.handleRemoveValidatorEvent(event)
+			default:
+			}
+
 		case <-c.Quit():
 			return
 		}
 	}
 }
 
-func (c *Reactor) handlerChainEvent(event abi.Event) {
+func (c *Reactor) handleLockEvent(event *types.DualEvent) {
+
+}
+
+func (c *Reactor) handleUnlockEvent(event *types.DualEvent) {
+
+}
+
+func (c *Reactor) handleAddValidatorEvent(event *types.DualEvent) {
+
+}
+
+func (c *Reactor) handleRemoveValidatorEvent(event *types.DualEvent) {
 
 }
 

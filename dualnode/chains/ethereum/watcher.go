@@ -10,6 +10,7 @@ import (
 
 	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/dualnode/store"
 	dualTypes "github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/common"
 )
@@ -20,19 +21,29 @@ type Watcher struct {
 	client *ETHLightClient
 	events chan *dualTypes.DualEvent
 
+	store      *store.Store
 	checkpoint uint64
 	dualTopics [][]ethCommon.Hash
 }
 
-func newWatcher(client *ETHLightClient) *Watcher {
+func newWatcher(client *ETHLightClient, store *store.Store) *Watcher {
 	return &Watcher{
 		quit:   make(chan struct{}, 1),
 		client: client,
+		store:  store,
 		events: make(chan *dualTypes.DualEvent, dualCfg.DualEventChanSize),
 	}
 }
 
+func (w *Watcher) GetDualEventsChannel() chan *dualTypes.DualEvent {
+	return w.events
+}
+
 func (w *Watcher) Start() error {
+	checkpoint, err := w.store.GetCheckpoint(w.client.ChainConfig.ChainID)
+	if err != nil {
+		w.client.logger.Error("Cannot get old checkpoint", "chainID", w.client.ChainConfig.ChainID, "err", err)
+	}
 	// update checkpoint
 	if w.checkpoint <= 0 {
 		latestBlock, err := w.client.ETHClient.BlockByNumber(w.client.ctx, nil)
@@ -41,7 +52,14 @@ func (w *Watcher) Start() error {
 			return err
 		}
 		w.checkpoint = latestBlock.NumberU64()
+		err = w.store.SetCheckpoint(w.checkpoint, w.client.ChainConfig.ChainID)
+		if err != nil {
+			w.client.logger.Error("Cannot store checkpoint to store", "err", err, "chainID", w.client.ChainConfig.ChainID, "checkpoint", w.checkpoint)
+		}
+	} else {
+		w.checkpoint = checkpoint
 	}
+	w.client.logger.Info("Ethereum watcher started at", "height", w.checkpoint)
 	go func() {
 		if err := w.watch(); err != nil {
 			fmt.Printf("watch blocks error: %s", err)
@@ -126,13 +144,18 @@ func (w *Watcher) GetLatestDualEvents() ([]*dualTypes.DualEvent, error) {
 		w.client.logger.Error("Cannot get dual event topics", "err", err)
 		return nil, err
 	}
+	w.checkpoint, err = w.store.GetCheckpoint(w.client.ChainConfig.ChainID)
 	query := ethereum.FilterQuery{
 		FromBlock: new(big.Int).SetUint64(w.checkpoint),
 		ToBlock:   new(big.Int).SetUint64(latestBlock.NumberU64()),
 		Addresses: []ethCommon.Address{w.client.SwapSMC.Address},
 		Topics:    topics,
 	}
-	w.checkpoint = latestBlock.NumberU64() + 1 // increase checkpoint to prevent grabbing events of a block multiple times
+	w.checkpoint = latestBlock.NumberU64() + 1 // increase and store checkpoint to prevent grabbing events of a block multiple times
+	err = w.store.SetCheckpoint(w.checkpoint, w.client.ChainConfig.ChainID)
+	if err != nil {
+		w.client.logger.Error("Cannot store checkpoint to store", "err", err, "chainID", w.client.ChainConfig.ChainID, "checkpoint", w.checkpoint)
+	}
 	w.client.logger.Debug("Dual events query", "query", query)
 	logs, err := w.client.ETHClient.FilterLogs(w.client.ctx, query)
 	if err != nil {
