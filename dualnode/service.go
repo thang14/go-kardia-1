@@ -4,16 +4,26 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/consensus"
 	"github.com/kardiachain/go-kardia/dualnode/store"
+	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	"github.com/kardiachain/go-kardia/node"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 	"github.com/kardiachain/go-kardia/rpc"
-	"github.com/kardiachain/go-kardia/types"
+	ktypes "github.com/kardiachain/go-kardia/types"
 )
 
 type Service struct {
 	state    *consensus.State
 	cReactor *consensus.Reactor
+	chainM   *ChainManager
+
+	// deposit channel
+	depositC chan *dproto.Deposit
+	// withdraw channel
+	withdrawC chan bool
+	// validator set channel
+	vsChan chan *types.ValidatorSet
 }
 
 func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
@@ -24,23 +34,43 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 	if err != nil {
 		panic(err)
 	}
-	cReacter := consensus.NewReactor(cState, cfg)
-	service := &Service{
-		cReactor: cReacter,
-		state:    cState,
+
+	sv := &Service{
+		state:     cState,
+		depositC:  make(chan *dproto.Deposit),
+		withdrawC: make(chan bool),
+		vsChan:    make(chan *types.ValidatorSet),
 	}
-	return service, nil
+
+	sv.cReactor = consensus.NewReactor(
+		cState,
+		cfg,
+		sv.depositC,
+		sv.withdrawC,
+		sv.vsChan,
+	)
+
+	sv.chainM = newChainManager(
+		cfg,
+		s,
+		sv.depositC,
+		sv.withdrawC,
+		sv.vsChan,
+	)
+
+	return sv, nil
 }
 
 // Start implements Service, starting all internal goroutines needed by the
 // Kardia protocol implementation.
 func (s *Service) Start(srvr *p2p.Switch) error {
 	srvr.AddReactor("BLOCKCHAIN", s.cReactor)
-	return nil
+	return s.chainM.Start()
 }
 
 func (s *Service) Stop() error {
-	return s.cReactor.Stop()
+	_ = s.cReactor.Stop()
+	return s.chainM.Stop()
 }
 
 func (s *Service) APIs() []rpc.API {
@@ -54,7 +84,7 @@ func (s *Service) APIs() []rpc.API {
 	}
 }
 
-func (s *Service) DB() types.StoreDB {
+func (s *Service) DB() ktypes.StoreDB {
 	return nil
 }
 

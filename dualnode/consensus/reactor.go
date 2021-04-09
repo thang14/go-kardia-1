@@ -30,19 +30,24 @@ type Reactor struct {
 	state         *State
 	privValidator types.PrivValidator
 
-	depositC chan *dproto.Deposit
-	valSetC  chan *types.ValidatorSet
+	depositC  chan *dproto.Deposit
+	valSetC   chan *types.ValidatorSet
+	withdrawC chan bool
 }
 
-func newReactor(state *State, cfg *config.Config) *Reactor {
-	r := &Reactor{}
+func newReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit, withdrawC chan bool, vsC chan *types.ValidatorSet) *Reactor {
+	r := &Reactor{
+		depositC:  depositC,
+		valSetC:   vsC,
+		withdrawC: withdrawC,
+	}
 	r.BaseReactor = *p2p.NewBaseReactor("DualReactor", r)
 	return r
 }
 
 // NewReactor creates a new reactor instance.
-func NewReactor(state *State, cfg *config.Config) *Reactor {
-	return newReactor(state, cfg)
+func NewReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit, withdrawC chan bool, vsC chan *types.ValidatorSet) *Reactor {
+	return newReactor(state, cfg, depositC, withdrawC, vsC)
 }
 
 func (r *Reactor) OnStart() error {
@@ -57,6 +62,8 @@ func (r *Reactor) run() error {
 			return r.handleDeposit(depositRecord)
 		case valSet := <-r.valSetC:
 			return r.handleUpdateValSet(valSet)
+		case withdraw := <-r.withdrawC:
+			return r.handleWithdraw(withdraw)
 		case <-cleanup.C:
 			return r.handleCleanup()
 		case <-r.Quit():
@@ -67,6 +74,10 @@ func (r *Reactor) run() error {
 
 func (r *Reactor) handleDeposit(d *dproto.Deposit) error {
 	return r.state.AddDeposit(d)
+}
+
+func (r *Reactor) handleWithdraw(withdraw bool) error {
+	return nil
 }
 
 func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) error {
