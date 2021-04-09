@@ -51,23 +51,26 @@ func (r *Reactor) OnStart() error {
 }
 
 func (r *Reactor) run() error {
+	cleanup := time.NewTicker(30 * time.Second)
 	for {
 		select {
 		case depositRecord := <-r.depositC:
-			return r.handlerDeposit(depositRecord)
+			return r.handleDeposit(depositRecord)
 		case valSet := <-r.valSetC:
-			return r.handlerUpdateValSet(valSet)
+			return r.handleUpdateValSet(valSet)
+		case <-cleanup.C:
+			return r.handleCleanup()
 		case <-r.Quit():
 			return nil
 		}
 	}
 }
 
-func (r *Reactor) handlerDeposit(d *dproto.Deposit) error {
+func (r *Reactor) handleDeposit(d *dproto.Deposit) error {
 	return r.state.AddDeposit(d)
 }
 
-func (r *Reactor) handlerUpdateValSet(vs *types.ValidatorSet) error {
+func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) error {
 	return r.state.SetValidatorSet(vs)
 }
 
@@ -172,6 +175,10 @@ func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvMessageCapacity: MaxMsgSize,
 		},
 	}
+}
+
+func (r *Reactor) handleCleanup() error {
+	return nil
 }
 
 type PeerState struct {
