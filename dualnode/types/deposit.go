@@ -1,72 +1,84 @@
 package types
 
 import (
-	"strings"
-
-	"github.com/kardiachain/go-kardia/lib/abi"
-	"github.com/kardiachain/go-kardia/lib/crypto"
+	"github.com/kardiachain/go-kardia/lib/common"
+	"github.com/kardiachain/go-kardia/lib/math"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
+	"github.com/kardiachain/go-kardia/signer/core"
 )
 
-var depositAbiJSON = `
-[
-	{
-		"inputs": [
-			{
-				"internalType": "bytes32",
-				"name": "deposit_hash",
-				"type": "bytes32"
-			},
-			{
-				"internalType": "uint256",
-				"name": "source",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "dest",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "depositor",
-				"type": "uint256"
-			},
-			{
-				"internalType": "bytes32",
-				"name": "recipient",
-				"type": "bytes32"
-			},
-			{
-				"internalType": "bytes32",
-				"name": "token",
-				"type": "bytes32"
-			},
-			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "deposit",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	}
-]
-`
+var typesStandard = core.Types{
+	"EIP712Domain": {
+		{
+			Name: "name",
+			Type: "string",
+		},
+		{
+			Name: "version",
+			Type: "string",
+		},
+		{
+			Name: "chainId",
+			Type: "uint256",
+		},
+		{
+			Name: "verifyingContract",
+			Type: "address",
+		},
+	},
 
-func DepositHash(deposit *dproto.Deposit) error {
-	depositABI, err := abi.JSON(strings.NewReader(depositAbiJSON))
-	if err != nil {
-		return err
+	"Deposit": {
+		{
+			Name: "sourceChainId",
+			Type: "uint256",
+		},
+		{
+			Name: "destChainId",
+			Type: "uint256",
+		},
+		{
+			Name: "depositId",
+			Type: "uint256",
+		},
+		{
+			Name: "depositor",
+			Type: "bytes32",
+		},
+		{
+			Name: "recipient",
+			Type: "address",
+		},
+		{
+			Name: "token",
+			Type: "bytes32",
+		},
+		{
+			Name: "amount",
+			Type: "uint256",
+		},
+	},
+}
+
+func WithDepositHash(d *dproto.Deposit, bridgeAddr common.Address) error {
+
+	var domainStandard = core.TypedDataDomain{
+		Name:              "KAI",
+		Version:           "1",
+		ChainId:           math.NewHexOrDecimal256(d.DestChainId),
+		VerifyingContract: bridgeAddr.String(),
+		Salt:              "",
 	}
 
-	hash, err := depositABI.Pack("deposit")
-	if err != nil {
-		return err
+	var messageStandard = map[string]interface{}{}
+
+	var typedData = core.TypedData{
+		Types:       typesStandard,
+		PrimaryType: "Deposit",
+		Domain:      domainStandard,
+		Message:     messageStandard,
 	}
 
-	deposit.Hash = crypto.Keccak256Hash(hash).Bytes()
+	hash := typedData.TypeHash(typedData.PrimaryType)
+	d.Hash = hash[:]
 	return nil
 }
