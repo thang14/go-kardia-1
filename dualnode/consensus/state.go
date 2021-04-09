@@ -2,58 +2,50 @@ package consensus
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/crypto"
-	kevents "github.com/kardiachain/go-kardia/lib/events"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
-type State struct {
-	vpool           *Pool
-	store           *store.Store
-	privValidator   types.PrivValidator
-	pendingDeposits map[string]*dproto.Deposit
-	depositHashMap  map[string]string
-	// Synchronous pubsub between consensus state and manager.
-	// State only emits EventNewRoundStep, EventVote and EventProposalHeartbeat
-	evsw kevents.EventSwitch
+type depositState struct {
+	deposit    *dproto.Deposit
+	signatures map[common.Address][]byte
+	submitted  bool
+	createdAt  time.Time
+}
 
-	validatorSet map[int64]*types.ValidatorSet
-	voteSets     map[string]*types.VoteSet
-	lastDeposit  map[int64]int64
+type depositMap map[common.Hash]*depositState
+
+type State struct {
+	vpool         *Pool
+	store         *store.Store
+	privValidator types.PrivValidator
+
+	// deposit map
+	dmap depositMap
+	// validator set
+	vs             *types.ValidatorSet
+	depositHashMap map[string]common.Hash
 }
 
 func NewState(vpool *Pool, store *store.Store) (*State, error) {
-	state := &State{
-		vpool:           vpool,
-		store:           store,
-		pendingDeposits: make(map[string]*dproto.Deposit),
-		depositHashMap:  make(map[string]string),
-		evsw:            kevents.NewEventSwitch(),
-		validatorSet:    make(map[int64]*types.ValidatorSet),
-		voteSets:        make(map[string]*types.VoteSet),
-		lastDeposit:     make(map[int64]int64),
+	s := &State{
+		vpool:          vpool,
+		store:          store,
+		dmap:           depositMap{},
+		depositHashMap: make(map[string]common.Hash),
+		vs:             types.NewValidatorSet(nil),
 	}
-
-	pendingDeposits, err := store.PendingDeposit()
-	if err != nil {
-		return nil, err
-	}
-
-	// restore all pending deposit
-	for _, d := range pendingDeposits {
-		state.AddDeposit(d)
-	}
-
-	return state, nil
+	return s, nil
 }
 
 func (s *State) AddVote(vote *dproto.Vote) error {
-	valAddr := common.BytesToAddress(vote.ValidatorAddress)
-	if !s.validatorSet[vote.Destination].Has(valAddr) {
+	valAddr := common.BytesToAddress(vote.Addr)
+	if !s.vs.Has(valAddr) {
 		return nil
 	}
 
@@ -64,20 +56,20 @@ func (s *State) AddVote(vote *dproto.Vote) error {
 }
 
 func (s *State) addVote(vote *dproto.Vote) error {
-	if s.pendingDeposits[string(vote.Hash)] == nil {
-		return nil
-	}
-	depositHash := string(vote.Hash)
-	if s.voteSets[depositHash] == nil {
-		s.voteSets[depositHash] = types.NewVoteSet(make([]*dproto.Vote, 0))
-	}
-
-	if s.voteSets[depositHash].Has(vote.ValidatorAddress) {
-		return nil
+	hash := common.BytesToHash(vote.Hash)
+	valAddr := common.BytesToAddress(vote.Addr)
+	if s.dmap[hash] == nil {
+		s.dmap[hash] = &depositState{
+			signatures: make(map[common.Address][]byte),
+			createdAt:  time.Now(),
+		}
 	}
 
-	s.voteSets[depositHash].Add(vote)
-	s.vpool.AddVote(vote)
+	if s.dmap[hash].signatures[valAddr] == nil {
+		s.dmap[hash].signatures[valAddr] = vote.Signature
+		s.vpool.AddVote(vote)
+	}
+
 	return nil
 }
 
@@ -86,71 +78,74 @@ func (s *State) signVote(vote *dproto.Vote) error {
 }
 
 func (s *State) AddDeposit(d *dproto.Deposit) error {
-	hash := string(d.Hash)
+	hash := common.BytesToHash(d.Hash)
 
-	if s.pendingDeposits[hash] != nil {
-		return nil
+	if s.dmap[hash] == nil {
+		s.dmap[hash] = &depositState{
+			signatures: make(map[common.Address][]byte),
+			createdAt:  time.Now(),
+		}
 	}
 
-	s.depositHashMap[depositKey(d.Destination, d.DepositId)] = hash
-	s.pendingDeposits[hash] = d
+	s.dmap[hash].deposit = d
+	s.depositHashMap[depositKey(d.DestChainId, d.DepositId)] = hash
 
 	if err := s.store.SetDeposit(d); err != nil {
 		return err
 	}
 
 	vote := &dproto.Vote{
-		Hash:             d.Hash,
-		Destination:      d.Destination,
-		DepositId:        d.DepositId,
-		ValidatorAddress: s.privValidator.GetAddress().Bytes(),
+		Hash: d.Hash,
+		Addr: s.privValidator.GetAddress().Bytes(),
 	}
 	if err := s.signVote(vote); err != nil {
 		return err
 	}
-	s.lastDeposit[d.Source] = d.DepositId
-	s.evsw.FireEvent("deposit", d)
 	return s.addVote(vote)
 }
 
 func (s *State) MarkDepositComplete(d *dproto.Deposit) error {
+	hash := common.BytesToHash(d.Hash)
 	s.vpool.MakeDepositCompleted(d)
-	s.voteSets[string(d.Hash)] = nil
-	delete(s.pendingDeposits, string(d.Hash))
-	delete(s.depositHashMap, depositKey(d.Destination, d.DepositId))
+	delete(s.dmap, hash)
 	return s.store.MarkDepositCompleted(d)
 }
 
 func (s *State) Signs(d *dproto.Deposit) [][]byte {
-	if s.voteSets[string(d.Hash)] == nil {
-		return nil
+	signs := make([][]byte, 0)
+	hash := common.BytesToHash(d.Hash)
+
+	if s.dmap[hash] == nil {
+		return signs
 	}
-	return s.voteSets[string(d.Hash)].Signs()
+
+	for _, sign := range s.dmap[hash].signatures {
+		signs = append(signs, sign)
+	}
+
+	return signs
 }
 
 func (s *State) GetDepositByID(chainID, depositID int64) *dproto.Deposit {
 	k := s.depositHashMap[depositKey(chainID, depositID)]
-	return s.pendingDeposits[k]
+	return s.dmap[k].deposit
 }
 
 func (s *State) SetPrivValidator(priv types.PrivValidator) {
 	s.privValidator = priv
 }
 
-func (s *State) GetDepositState() map[int64]int64 {
-	return s.lastDeposit
-}
-
 func (s *State) AddValidator(chainID int64, addr common.Address) {
-	if s.validatorSet[chainID] == nil {
-		s.validatorSet[chainID] = types.NewValidatorSet([]common.Address{addr})
-		return
-	}
-	s.validatorSet[chainID].Add(addr)
+	s.vs.Add(addr)
 }
 
 func (s *State) RemoveValidator(chainID int64, addr common.Address) {
-	s.validatorSet[chainID].Remove(addr)
+	s.vs.Remove(addr)
+}
+
+func (s *State) SetValidatorSet(vs *types.ValidatorSet) error {
+	s.vs = vs
+	return nil
 }
 
 func depositKey(chainID, depositID int64) string {

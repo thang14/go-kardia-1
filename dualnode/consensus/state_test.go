@@ -20,10 +20,10 @@ func TestAddDeposit(t *testing.T) {
 	state.SetPrivValidator(priv)
 
 	depositRecord := &kardiachain_dualnode.Deposit{
-		Hash:        []byte("dfsafdsf"),
-		Source:      1, // eth
-		Destination: 2, // kai,
-		DepositId:   3,
+		Hash:          []byte("dfsafdsf"),
+		SourceChainId: 1, // eth
+		DestChainId:   2, // kai,
+		DepositId:     3,
 	}
 
 	err = state.AddDeposit(depositRecord)
@@ -37,10 +37,8 @@ func TestAddDeposit(t *testing.T) {
 
 	// add other vote
 	vote := &kardiachain_dualnode.Vote{
-		Hash:             deposit.Hash,
-		Destination:      deposit.Destination,
-		DepositId:        deposit.DepositId,
-		ValidatorAddress: []byte("0x2"),
+		Hash: deposit.Hash,
+		Addr: []byte("0x2"),
 	}
 	state.addVote(vote)
 	// no add duplicated vote

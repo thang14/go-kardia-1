@@ -1,15 +1,11 @@
 package consensus
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum"
-	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain"
 	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/clist"
-	kevents "github.com/kardiachain/go-kardia/lib/events"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
@@ -28,37 +24,20 @@ const (
 	peerRetryMessageIntervalMS = 100
 )
 
-type Chain interface {
-	Start() error
-	Stop() error
-	Event() chan *types.DualEvent
-}
-
 type Reactor struct {
 	p2p.BaseReactor
 	logger        log.Logger
 	vpool         *Pool
 	state         *State
 	privValidator types.PrivValidator
-	chains        []Chain
-}
 
-func addChainFromConfig(r *Reactor, cfg *config.Config) {
-	for _, chainConfig := range cfg.Chains {
-		var chain Chain
-		if chainConfig.Type == "eth" {
-			chain = ethereum.NewChain(&chainConfig, r.state.store)
-		} else {
-			chain = kardiachain.NewChain(&chainConfig, r.state.store)
-		}
-		r.AddChain(chain)
-	}
+	depositC chan *dproto.Deposit
+	valSetC  chan *types.ValidatorSet
 }
 
 func newReactor(state *State, cfg *config.Config) *Reactor {
 	r := &Reactor{}
 	r.BaseReactor = *p2p.NewBaseReactor("DualReactor", r)
-	addChainFromConfig(r, cfg)
 	return r
 }
 
@@ -67,110 +46,29 @@ func NewReactor(state *State, cfg *config.Config) *Reactor {
 	return newReactor(state, cfg)
 }
 
-func (c *Reactor) AddChain(chains ...Chain) {
-	c.chains = append(c.chains, chains...)
+func (r *Reactor) OnStart() error {
+	return r.run()
 }
 
-func (conR *Reactor) OnStart() error {
-	conR.subscribeToBroadcastEvents()
-
-	for _, chain := range conR.chains {
-		if err := chain.Start(); err != nil {
-			return err
-		}
-		go conR.processChainEvent(chain.Event())
-	}
-
-	return nil
-}
-
-// OnStop implements BaseService by unsubscribing from events and stopping
-// state.
-func (conR *Reactor) OnStop() {
-	conR.unsubscribeFromBroadcastEvents()
-	for _, chain := range conR.chains {
-		_ = chain.Stop()
-	}
-}
-
-func (c *Reactor) processChainEvent(events chan *types.DualEvent) {
+func (r *Reactor) run() error {
 	for {
 		select {
-		case event := <-events:
-			switch event.RawName {
-			case config.LockEventRawName:
-				c.handleLockEvent(event)
-			case config.UnlockEventRawName:
-				c.handleUnlockEvent(event)
-			case config.AddValidatorEventRawName:
-				c.handleAddValidatorEvent(event)
-			case config.RemoveValidatorEventRawName:
-				c.handleRemoveValidatorEvent(event)
-			default:
-			}
-
-		case <-c.Quit():
-			return
+		case depositRecord := <-r.depositC:
+			return r.handlerDeposit(depositRecord)
+		case valSet := <-r.valSetC:
+			return r.handlerUpdateValSet(valSet)
+		case <-r.Quit():
+			return nil
 		}
 	}
 }
 
-func (c *Reactor) handleLockEvent(event *types.DualEvent) {
-
+func (r *Reactor) handlerDeposit(d *dproto.Deposit) error {
+	return r.state.AddDeposit(d)
 }
 
-func (c *Reactor) handleUnlockEvent(event *types.DualEvent) {
-
-}
-
-func (c *Reactor) handleAddValidatorEvent(event *types.DualEvent) {
-
-}
-
-func (c *Reactor) handleRemoveValidatorEvent(event *types.DualEvent) {
-
-}
-
-func (conR *Reactor) subscribeToBroadcastEvents() {
-	const subscriber = "consensus-reactor"
-	if err := conR.state.evsw.AddListenerForEvent(subscriber, "deposit",
-		func(data kevents.EventData) {
-			conR.broadcastNewDeposit(data.(*dproto.Deposit))
-		}); err != nil {
-		conR.Logger.Error("Error adding listener for events", "err", err)
-	}
-}
-
-func (conR *Reactor) unsubscribeFromBroadcastEvents() {
-	const subscriber = "consensus-reactor"
-	conR.state.evsw.RemoveListener(subscriber)
-}
-
-func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
-	msg := makePeerStateMsg(conR.state)
-	msgBytes, err := EncodeMsg(msg)
-	if err != nil {
-		panic(err)
-	}
-	peer.Send(DualChannel, msgBytes)
-}
-
-func makePeerStateMsg(state *State) *dproto.Message {
-	return &dproto.Message{
-		Sum: &dproto.Message_PeerState{
-			PeerState: &dproto.PeerState{
-				LastDeposit: state.GetDepositState(),
-			},
-		},
-	}
-}
-
-func (r *Reactor) broadcastNewDeposit(deposit *dproto.Deposit) {
-	msgBytes, err := EncodeMsg(makePeerStateMsg(r.state))
-	if err != nil {
-		panic(err)
-	}
-	r.Switch.Broadcast(DualChannel, msgBytes)
+func (r *Reactor) handlerUpdateValSet(vs *types.ValidatorSet) error {
+	return r.state.SetValidatorSet(vs)
 }
 
 // SetLogger sets the Logger on the reactor and the underlying Evidence.
@@ -201,20 +99,12 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		return
 	}
 
-	// Get peer states
-	ps, ok := src.Get(ktypes.PeerStateKey).(*PeerState)
-	if !ok {
-		panic(fmt.Sprintf("Peer %v has no state", src))
-	}
-
 	switch msg := msg.(type) {
 	case *dproto.Vote:
 		if err := r.state.AddVote(msg); err != nil {
 			r.Switch.StopPeerForError(src, err)
 			return
 		}
-	case *dproto.PeerState:
-		ps.Deposit = msg.LastDeposit
 	}
 
 }
@@ -241,7 +131,7 @@ func (r *Reactor) broadcastVoteRoutine(peer p2p.Peer) {
 			return
 		}
 
-		vote := r.prepareVoteMsg(peer, next.Value.(*dproto.Vote))
+		vote := next.Value.(*dproto.Vote)
 		if vote != nil {
 			voteBytes, err := vote.Marshal()
 			if err != nil {
@@ -269,26 +159,6 @@ func (r *Reactor) broadcastVoteRoutine(peer p2p.Peer) {
 			return
 		}
 	}
-}
-
-func (evR Reactor) prepareVoteMsg(
-	peer p2p.Peer,
-	vote *dproto.Vote,
-) *dproto.Vote {
-	peerState, ok := peer.Get(ktypes.PeerStateKey).(PeerState)
-	if !ok {
-		// Peer does not have a state yet. We set it in the consensus reactor, but
-		// when we add peer in Switch, the order we call reactors#AddPeer is
-		// different every time due to us using a map. Sometimes other reactors
-		// will be initialized before the consensus reactor. We should wait a few
-		// milliseconds and retry.
-		return nil
-	}
-
-	if peerState.Deposit[vote.Destination] < vote.DepositId {
-		return nil
-	}
-	return vote
 }
 
 // GetChannels implements Reactor
