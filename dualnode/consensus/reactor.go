@@ -9,7 +9,6 @@ import (
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
-	ktypes "github.com/kardiachain/go-kardia/types"
 )
 
 const (
@@ -78,13 +77,6 @@ func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) error {
 func (r *Reactor) SetLogger(l log.Logger) {
 	r.Logger = l
 	r.vpool.SetLogger(l)
-}
-
-// InitPeer implements Reactor by creating a state for the peer.
-func (r *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
-	peerState := NewPeerState(peer).SetLogger(r.Logger)
-	peer.Set(ktypes.PeerStateKey, peerState)
-	return peer
 }
 
 // AddPeer implements Reactor.
@@ -179,26 +171,4 @@ func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 
 func (r *Reactor) handleCleanup() error {
 	return nil
-}
-
-type PeerState struct {
-	peer    p2p.Peer
-	logger  log.Logger
-	Deposit map[int64]int64
-}
-
-// NewPeerState returns a new PeerState for the given Peer
-func NewPeerState(peer p2p.Peer) *PeerState {
-	return &PeerState{
-		peer:    peer,
-		logger:  log.NewNopLogger(),
-		Deposit: make(map[int64]int64, 0),
-	}
-}
-
-// SetLogger allows to set a logger on the peer state. Returns the peer state
-// itself.
-func (ps *PeerState) SetLogger(logger log.Logger) *PeerState {
-	ps.logger = logger
-	return ps
 }
