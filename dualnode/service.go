@@ -35,11 +35,12 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 // Start implements Service, starting all internal goroutines needed by the
 // Kardia protocol implementation.
 func (s *Service) Start(srvr *p2p.Switch) error {
+	srvr.AddReactor("BLOCKCHAIN", s.cReactor)
 	return nil
 }
 
 func (s *Service) Stop() error {
-	return nil
+	return s.cReactor.Stop()
 }
 
 func (s *Service) APIs() []rpc.API {

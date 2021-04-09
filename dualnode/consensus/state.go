@@ -94,6 +94,11 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 		return err
 	}
 
+	if !s.IsValidator() {
+		return nil
+	}
+
+	// sign and send vote
 	vote := &dproto.Vote{
 		Hash: d.Hash,
 		Addr: s.privValidator.GetAddress().Bytes(),
@@ -146,6 +151,10 @@ func (s *State) RemoveValidator(chainID int64, addr common.Address) {
 func (s *State) SetValidatorSet(vs *types.ValidatorSet) error {
 	s.vs = vs
 	return nil
+}
+
+func (s *State) IsValidator() bool {
+	return s.vs.Has(s.privValidator.GetAddress())
 }
 
 func depositKey(chainID, depositID int64) string {
