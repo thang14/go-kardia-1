@@ -18,7 +18,7 @@ type ChainManager struct {
 	chains []Chain
 }
 
-func newChainManager(cfg *config.Config, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan bool, vsC chan *types.ValidatorSet) *ChainManager {
+func newChainManager(cfg *config.Config, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *ChainManager {
 	m := &ChainManager{}
 	for _, chainConfig := range cfg.Chains {
 		var chain Chain

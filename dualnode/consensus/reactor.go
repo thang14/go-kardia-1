@@ -32,10 +32,10 @@ type Reactor struct {
 
 	depositC  chan *dproto.Deposit
 	valSetC   chan *types.ValidatorSet
-	withdrawC chan bool
+	withdrawC chan types.Withdraw
 }
 
-func newReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit, withdrawC chan bool, vsC chan *types.ValidatorSet) *Reactor {
+func newReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Reactor {
 	r := &Reactor{
 		depositC:  depositC,
 		valSetC:   vsC,
@@ -46,42 +46,12 @@ func newReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit,
 }
 
 // NewReactor creates a new reactor instance.
-func NewReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit, withdrawC chan bool, vsC chan *types.ValidatorSet) *Reactor {
+func NewReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Reactor {
 	return newReactor(state, cfg, depositC, withdrawC, vsC)
 }
 
 func (r *Reactor) OnStart() error {
 	return r.run()
-}
-
-func (r *Reactor) run() error {
-	cleanup := time.NewTicker(30 * time.Second)
-	for {
-		select {
-		case depositRecord := <-r.depositC:
-			return r.handleDeposit(depositRecord)
-		case valSet := <-r.valSetC:
-			return r.handleUpdateValSet(valSet)
-		case withdraw := <-r.withdrawC:
-			return r.handleWithdraw(withdraw)
-		case <-cleanup.C:
-			return r.handleCleanup()
-		case <-r.Quit():
-			return nil
-		}
-	}
-}
-
-func (r *Reactor) handleDeposit(d *dproto.Deposit) error {
-	return r.state.AddDeposit(d)
-}
-
-func (r *Reactor) handleWithdraw(withdraw bool) error {
-	return nil
-}
-
-func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) error {
-	return r.state.SetValidatorSet(vs)
 }
 
 // SetLogger sets the Logger on the reactor and the underlying Evidence.

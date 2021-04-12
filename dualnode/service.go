@@ -21,7 +21,7 @@ type Service struct {
 	// deposit channel
 	depositC chan *dproto.Deposit
 	// withdraw channel
-	withdrawC chan bool
+	withdrawC chan types.Withdraw
 	// validator set channel
 	vsChan chan *types.ValidatorSet
 }
@@ -38,7 +38,7 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 	sv := &Service{
 		state:     cState,
 		depositC:  make(chan *dproto.Deposit),
-		withdrawC: make(chan bool),
+		withdrawC: make(chan types.Withdraw),
 		vsChan:    make(chan *types.ValidatorSet),
 	}
 
