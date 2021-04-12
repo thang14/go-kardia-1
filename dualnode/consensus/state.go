@@ -6,8 +6,9 @@ import (
 
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
+	ctypes "github.com/kardiachain/go-kardia/types"
+
 	"github.com/kardiachain/go-kardia/lib/common"
-	"github.com/kardiachain/go-kardia/lib/crypto"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
@@ -46,30 +47,33 @@ func NewState(vpool *Pool, store *store.Store) (*State, error) {
 func (s *State) AddVote(vote *dproto.Vote) error {
 	valAddr := common.BytesToAddress(vote.Addr)
 	if !s.vs.Has(valAddr) {
-		return nil
+		return fmt.Errorf("validator not found")
 	}
-
-	if crypto.VerifySignature(valAddr, vote.Hash, vote.Signature) {
+	if !ctypes.VerifySignature(valAddr, vote.Hash, vote.Signature) {
 		return fmt.Errorf("invalid signature")
 	}
+
 	return s.addVote(vote)
 }
 
-func (s *State) addVote(vote *dproto.Vote) error {
-	hash := common.BytesToHash(vote.Hash)
-	valAddr := common.BytesToAddress(vote.Addr)
+func (s *State) getDepositState(hash common.Hash) *depositState {
 	if s.dmap[hash] == nil {
 		s.dmap[hash] = &depositState{
 			signatures: make(map[common.Address][]byte),
 			createdAt:  time.Now(),
 		}
 	}
+	return s.dmap[hash]
+}
 
-	if s.dmap[hash].signatures[valAddr] == nil {
+func (s *State) addVote(vote *dproto.Vote) error {
+	hash := common.BytesToHash(vote.Hash)
+	valAddr := common.BytesToAddress(vote.Addr)
+	dState := s.getDepositState(hash)
+	if dState.signatures[valAddr] == nil {
 		s.dmap[hash].signatures[valAddr] = vote.Signature
 		s.vpool.AddVote(vote)
 	}
-
 	return nil
 }
 
@@ -79,15 +83,8 @@ func (s *State) signVote(vote *dproto.Vote) error {
 
 func (s *State) AddDeposit(d *dproto.Deposit) error {
 	hash := common.BytesToHash(d.Hash)
-
-	if s.dmap[hash] == nil {
-		s.dmap[hash] = &depositState{
-			signatures: make(map[common.Address][]byte),
-			createdAt:  time.Now(),
-		}
-	}
-
-	s.dmap[hash].deposit = d
+	dState := s.getDepositState(hash)
+	dState.deposit = d
 	s.depositHashMap[depositKey(d.DestChainId, d.DepositId)] = hash
 
 	if err := s.store.SetDeposit(d); err != nil {
@@ -98,7 +95,7 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 		return nil
 	}
 
-	// sign and send vote
+	// sign and add vote
 	vote := &dproto.Vote{
 		Hash: d.Hash,
 		Addr: s.privValidator.GetAddress().Bytes(),

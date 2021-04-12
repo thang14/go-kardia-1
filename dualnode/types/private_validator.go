@@ -67,6 +67,12 @@ func NewMockPV() *MockPV {
 }
 
 func (p *MockPV) SignVote(vote *dproto.Vote) error {
+	sig, err := crypto.Sign(vote.Hash, p.privKey)
+	if err != nil {
+		log.Trace("Signing vote failed", "err", err)
+		return err
+	}
+	vote.Signature = sig
 	return nil
 }
 

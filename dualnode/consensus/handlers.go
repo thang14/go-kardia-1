@@ -12,28 +12,37 @@ func (r *Reactor) run() error {
 	for {
 		select {
 		case depositRecord := <-r.depositC:
-			return r.handleDeposit(depositRecord)
+			r.handleDeposit(depositRecord)
 		case valSet := <-r.valSetC:
-			return r.handleUpdateValSet(valSet)
+			r.handleUpdateValSet(valSet)
 		case withdraw := <-r.withdrawC:
-			return r.handleWithdraw(withdraw)
+			r.handleWithdraw(withdraw)
 		case <-cleanup.C:
-			return r.handleCleanup()
+			r.handleCleanup()
 		case <-r.Quit():
 			return nil
 		}
 	}
 }
 
-func (r *Reactor) handleDeposit(d *dproto.Deposit) error {
-	return r.state.AddDeposit(d)
+func (r *Reactor) handleDeposit(d *dproto.Deposit) {
+	if err := r.state.AddDeposit(d); err != nil {
+		r.logger.Error("add deposit", "err", err)
+		return
+	}
 }
 
 func (r *Reactor) handleWithdraw(withdraw types.Withdraw) error {
 	deposit := r.state.GetDepositByID(withdraw.DestChainId, withdraw.DepositId)
+	if deposit == nil {
+		return nil
+	}
 	return r.state.MarkDepositComplete(deposit)
 }
 
-func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) error {
-	return r.state.SetValidatorSet(vs)
+func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) {
+	if err := r.state.SetValidatorSet(vs); err != nil {
+		r.logger.Error("set validator err", "err", err)
+		return
+	}
 }

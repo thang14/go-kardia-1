@@ -66,6 +66,13 @@ func (r *Reactor) AddPeer(peer p2p.Peer) error {
 	return nil
 }
 
+func (r *Reactor) addVote(src p2p.Peer, vote *dproto.Vote) error {
+	if err := validateVote(vote); err != nil {
+		return err
+	}
+	return r.state.AddVote(vote)
+}
+
 // Receive implements Reactor by handling different message types.
 func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	msg, err := DecodeMsg(msgBytes)
@@ -77,7 +84,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	switch msg := msg.(type) {
 	case *dproto.Vote:
-		if err := r.state.AddVote(msg); err != nil {
+		if err := r.addVote(src, msg); err != nil {
 			r.Switch.StopPeerForError(src, err)
 			return
 		}

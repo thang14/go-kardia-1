@@ -6,8 +6,10 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
+	"github.com/kardiachain/go-kardia/lib/common"
 	kardiachain_dualnode "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAddDeposit(t *testing.T) {
@@ -17,14 +19,18 @@ func TestAddDeposit(t *testing.T) {
 	assert.NoError(t, err)
 
 	priv := types.NewMockPV()
+	priv2 := types.NewMockPV()
 	state.SetPrivValidator(priv)
+	state.SetValidatorSet(types.NewValidatorSet([]common.Address{priv.GetAddress()}))
 
 	depositRecord := &kardiachain_dualnode.Deposit{
-		Hash:          []byte("dfsafdsf"),
 		SourceChainId: 1, // eth
 		DestChainId:   2, // kai,
 		DepositId:     3,
 	}
+
+	err = types.WithDepositHash(depositRecord, common.Address{})
+	require.NoError(t, err)
 
 	err = state.AddDeposit(depositRecord)
 	assert.NoError(t, err)
@@ -43,6 +49,17 @@ func TestAddDeposit(t *testing.T) {
 	state.addVote(vote)
 	// no add duplicated vote
 	state.addVote(vote)
+
+	vote2 := &kardiachain_dualnode.Vote{
+		Hash: deposit.Hash,
+		Addr: priv.GetAddress().Bytes(),
+	}
+	err = priv2.SignVote(vote2)
+	assert.NoError(t, err)
+
+	// invalid signature
+	err = state.AddVote(vote2)
+	assert.Error(t, err, "invalid signature")
 
 	signs = state.Signs(deposit)
 	assert.Equal(t, len(signs), 2)
