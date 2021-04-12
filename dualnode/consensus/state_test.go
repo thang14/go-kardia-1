@@ -35,7 +35,7 @@ func TestAddDeposit(t *testing.T) {
 	err = state.AddDeposit(depositRecord)
 	assert.NoError(t, err)
 
-	deposit := state.GetDepositByID(2, 3)
+	deposit := state.GetDepositByID(depositKey(2, 3))
 	assert.Equal(t, deposit.Hash, depositRecord.Hash)
 
 	signs := state.Signs(deposit)

@@ -29,17 +29,20 @@ type State struct {
 	// deposit map
 	dmap depositMap
 	// validator set
-	vs             *types.ValidatorSet
-	depositHashMap map[string]common.Hash
+	vs *types.ValidatorSet
+	// deposit by key
+	dByKey   map[string]common.Hash
+	withdraw map[string]bool
 }
 
 func NewState(vpool *Pool, store *store.Store) (*State, error) {
 	s := &State{
-		vpool:          vpool,
-		store:          store,
-		dmap:           depositMap{},
-		depositHashMap: make(map[string]common.Hash),
-		vs:             types.NewValidatorSet(nil),
+		vpool:    vpool,
+		store:    store,
+		dmap:     depositMap{},
+		dByKey:   make(map[string]common.Hash),
+		vs:       types.NewValidatorSet(nil),
+		withdraw: make(map[string]bool),
 	}
 	return s, nil
 }
@@ -85,7 +88,7 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 	hash := common.BytesToHash(d.Hash)
 	dState := s.getDepositState(hash)
 	dState.deposit = d
-	s.depositHashMap[depositKey(d.DestChainId, d.DepositId)] = hash
+	s.dByKey[depositKey(d.DestChainId, d.DepositId)] = hash
 
 	if err := s.store.SetDeposit(d); err != nil {
 		return err
@@ -128,9 +131,13 @@ func (s *State) Signs(d *dproto.Deposit) [][]byte {
 	return signs
 }
 
-func (s *State) GetDepositByID(chainID, depositID int64) *dproto.Deposit {
-	k := s.depositHashMap[depositKey(chainID, depositID)]
-	return s.dmap[k].deposit
+func (s *State) GetDepositByID(key string) *dproto.Deposit {
+	h := s.dByKey[key]
+	if s.dmap[h] == nil {
+		return nil
+	}
+
+	return s.dmap[h].deposit
 }
 
 func (s *State) SetPrivValidator(priv types.PrivValidator) {
@@ -152,6 +159,16 @@ func (s *State) SetValidatorSet(vs *types.ValidatorSet) error {
 
 func (s *State) IsValidator() bool {
 	return s.vs.Has(s.privValidator.GetAddress())
+}
+
+func (s *State) AddWithdraw(w types.Withdraw) error {
+	dkey := depositKey(w.DestChainId, w.DepositId)
+	deposit := s.GetDepositByID(dkey)
+	if deposit == nil {
+		s.withdraw[dkey] = true
+		return nil
+	}
+	return s.MarkDepositComplete(deposit)
 }
 
 func depositKey(chainID, depositID int64) string {

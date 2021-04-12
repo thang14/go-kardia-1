@@ -32,12 +32,11 @@ func (r *Reactor) handleDeposit(d *dproto.Deposit) {
 	}
 }
 
-func (r *Reactor) handleWithdraw(withdraw types.Withdraw) error {
-	deposit := r.state.GetDepositByID(withdraw.DestChainId, withdraw.DepositId)
-	if deposit == nil {
-		return nil
+func (r *Reactor) handleWithdraw(withdraw types.Withdraw) {
+	if err := r.state.AddWithdraw(withdraw); err != nil {
+		r.logger.Error("add withdraw", "err", err)
+		return
 	}
-	return r.state.MarkDepositComplete(deposit)
 }
 
 func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) {
