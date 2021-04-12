@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/kardiachain/go-kardia/lib/clist"
+	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/log"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
@@ -37,10 +38,10 @@ func (vpool *Pool) AddVote(vote *dproto.Vote) error {
 	return nil
 }
 
-func (vpool *Pool) MakeDepositCompleted(deposit *dproto.Deposit) {
+func (vpool *Pool) MakeDepositCompleted(hash common.Hash) {
 	for e := vpool.voteList.Front(); e != nil; e = e.Next() {
 		v := e.Value.(*dproto.Vote)
-		if bytes.Equal(deposit.Hash, v.Hash) {
+		if bytes.Equal(hash.Bytes(), v.Hash) {
 			vpool.voteList.Remove(e)
 		}
 	}

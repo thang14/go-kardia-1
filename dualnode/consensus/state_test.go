@@ -23,22 +23,19 @@ func TestAddDeposit(t *testing.T) {
 	state.SetPrivValidator(priv)
 	state.SetValidatorSet(types.NewValidatorSet([]common.Address{priv.GetAddress()}))
 
-	depositRecord := &kardiachain_dualnode.Deposit{
+	deposit := &kardiachain_dualnode.Deposit{
 		SourceChainId: 1, // eth
 		DestChainId:   2, // kai,
 		DepositId:     3,
 	}
 
-	err = types.WithDepositHash(depositRecord, common.Address{})
+	err = types.WithDepositHash(deposit, common.Address{})
 	require.NoError(t, err)
 
-	err = state.AddDeposit(depositRecord)
+	err = state.AddDeposit(deposit)
 	assert.NoError(t, err)
 
-	deposit := state.GetDepositByID(depositKey(2, 3))
-	assert.Equal(t, deposit.Hash, depositRecord.Hash)
-
-	signs := state.Signs(deposit)
+	signs := state.Signs(common.BytesToHash(deposit.Hash))
 	assert.Equal(t, len(signs), 1)
 
 	// add other vote
@@ -61,13 +58,13 @@ func TestAddDeposit(t *testing.T) {
 	err = state.AddVote(vote2)
 	assert.Error(t, err, "invalid signature")
 
-	signs = state.Signs(deposit)
+	signs = state.Signs(common.BytesToHash(deposit.Hash))
 	assert.Equal(t, len(signs), 2)
 
 	// mark deposit completed
-	err = state.MarkDepositComplete(deposit)
+	err = state.MarkDepositComplete(common.BytesToHash(deposit.Hash))
 	assert.NoError(t, err)
 
-	signs = state.Signs(deposit)
+	signs = state.Signs(common.BytesToHash(deposit.Hash))
 	assert.Equal(t, len(signs), 0)
 }

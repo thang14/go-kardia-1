@@ -6,6 +6,7 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/kai/kaidb/memorydb"
+	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 	"github.com/kardiachain/go-kardia/node"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
@@ -88,11 +89,6 @@ func (s *Service) DB() ktypes.StoreDB {
 	return nil
 }
 
-func (s *Service) Signs(chainId int64, depositID int64) [][]byte {
-	d := s.state.GetDepositByID(chainId, depositID)
-	if d == nil {
-		return nil
-	}
-
-	return s.state.Signs(d)
+func (s *Service) Signs(hash common.Hash) [][]byte {
+	return s.state.Signs(hash)
 }

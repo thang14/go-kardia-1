@@ -19,6 +19,7 @@ func TestHandlers(t *testing.T) {
 	state, err := NewState(pool, s)
 	require.NoError(t, err)
 	state.SetPrivValidator(priv)
+	state.SetValidatorSet(types.NewValidatorSet([]common.Address{priv.GetAddress()}))
 
 	depositC := make(chan *dproto.Deposit, 0)
 	withdrawC := make(chan types.Withdraw, 0)
@@ -38,8 +39,11 @@ func TestHandlers(t *testing.T) {
 	ds := r.state.dmap[depositHash]
 	assert.Equal(t, ds.deposit, deposit)
 
+	signs := r.state.Signs(common.BytesToHash(deposit.Hash))
+	assert.Equal(t, len(signs), 1)
+
 	// withdraw
-	widthdraw := types.Withdraw{SourceChainId: deposit.SourceChainId, DestChainId: deposit.DestChainId, DepositId: deposit.DepositId}
+	widthdraw := types.Withdraw{Hash: deposit.Hash}
 	r.handleWithdraw(widthdraw)
 
 	ds = r.state.dmap[depositHash]

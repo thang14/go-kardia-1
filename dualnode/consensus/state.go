@@ -30,19 +30,14 @@ type State struct {
 	dmap depositMap
 	// validator set
 	vs *types.ValidatorSet
-	// deposit by key
-	dByKey   map[string]common.Hash
-	withdraw map[string]bool
 }
 
 func NewState(vpool *Pool, store *store.Store) (*State, error) {
 	s := &State{
-		vpool:    vpool,
-		store:    store,
-		dmap:     depositMap{},
-		dByKey:   make(map[string]common.Hash),
-		vs:       types.NewValidatorSet(nil),
-		withdraw: make(map[string]bool),
+		vpool: vpool,
+		store: store,
+		dmap:  depositMap{},
+		vs:    types.NewValidatorSet(nil),
 	}
 	return s, nil
 }
@@ -88,11 +83,6 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 	hash := common.BytesToHash(d.Hash)
 	dState := s.getOrCreateDepositState(hash)
 	dState.deposit = d
-	s.dByKey[depositKey(d.DestChainId, d.DepositId)] = hash
-
-	if err := s.store.SetDeposit(d); err != nil {
-		return err
-	}
 
 	if !s.IsValidator() {
 		return nil
@@ -109,17 +99,14 @@ func (s *State) AddDeposit(d *dproto.Deposit) error {
 	return s.addVote(vote)
 }
 
-func (s *State) MarkDepositComplete(d *dproto.Deposit) error {
-	hash := common.BytesToHash(d.Hash)
-	s.vpool.MakeDepositCompleted(d)
+func (s *State) MarkDepositComplete(hash common.Hash) error {
+	s.vpool.MakeDepositCompleted(hash)
 	delete(s.dmap, hash)
-	delete(s.dByKey, depositKey(d.DestChainId, d.DepositId))
-	return s.store.MarkDepositCompleted(d)
+	return nil
 }
 
-func (s *State) Signs(d *dproto.Deposit) [][]byte {
+func (s *State) Signs(hash common.Hash) [][]byte {
 	signs := make([][]byte, 0)
-	hash := common.BytesToHash(d.Hash)
 
 	if s.dmap[hash] == nil {
 		return signs
@@ -130,14 +117,6 @@ func (s *State) Signs(d *dproto.Deposit) [][]byte {
 	}
 
 	return signs
-}
-
-func (s *State) GetDepositByID(key string) *dproto.Deposit {
-	h := s.dByKey[key]
-	if s.dmap[h] == nil {
-		return nil
-	}
-	return s.dmap[h].deposit
 }
 
 func (s *State) SetPrivValidator(priv types.PrivValidator) {
@@ -159,18 +138,4 @@ func (s *State) SetValidatorSet(vs *types.ValidatorSet) error {
 
 func (s *State) IsValidator() bool {
 	return s.vs.Has(s.privValidator.GetAddress())
-}
-
-func (s *State) AddWithdraw(w types.Withdraw) error {
-	dkey := depositKey(w.DestChainId, w.DepositId)
-	deposit := s.GetDepositByID(dkey)
-	if deposit == nil {
-		s.withdraw[dkey] = true
-		return nil
-	}
-	return s.MarkDepositComplete(deposit)
-}
-
-func depositKey(chainID, depositID int64) string {
-	return fmt.Sprintf("%d:%d", chainID, depositID)
 }

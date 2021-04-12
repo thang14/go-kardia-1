@@ -1,11 +1,13 @@
 package dualnode
 
+import "github.com/kardiachain/go-kardia/lib/common"
+
 type BridgeAPI struct {
 	service *Service
 }
 
-func (api *BridgeAPI) Signs(chainID int64, depositID int64) ([][]byte, error) {
-	return api.service.Signs(chainID, depositID), nil
+func (api *BridgeAPI) Signs(hash common.Hash) ([][]byte, error) {
+	return api.service.Signs(hash), nil
 }
 
 // BriNewBridgeAPIdgeAPI is a constructor of BridgeAPI

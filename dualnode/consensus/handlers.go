@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/kardiachain/go-kardia/dualnode/types"
+	"github.com/kardiachain/go-kardia/lib/common"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
@@ -33,7 +34,7 @@ func (r *Reactor) handleDeposit(d *dproto.Deposit) {
 }
 
 func (r *Reactor) handleWithdraw(withdraw types.Withdraw) {
-	if err := r.state.AddWithdraw(withdraw); err != nil {
+	if err := r.state.MarkDepositComplete(common.BytesToHash(withdraw.Hash)); err != nil {
 		r.logger.Error("add withdraw", "err", err)
 		return
 	}
@@ -47,10 +48,10 @@ func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) {
 }
 
 func (r *Reactor) handleCleanup() {
-	for _, ds := range r.state.dmap {
-		switch {
-		case ds.deposit != nil && r.state.withdraw[depositKey(ds.deposit.DepositId, ds.deposit.DepositId)]:
-			r.state.MarkDepositComplete(ds.deposit)
+	for hash, ds := range r.state.dmap {
+		delta := time.Now().Sub(ds.createdAt)
+		if delta.Minutes() >= 15 {
+			r.state.MarkDepositComplete(hash)
 		}
 	}
 }
