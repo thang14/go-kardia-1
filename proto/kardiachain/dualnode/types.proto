@@ -38,7 +38,7 @@ message Deposit {
     // deposit token
     bytes token = 8;
     // deposit amount
-    bytes amount = 7;
+    int64 amount = 7;
     // deposit status
     DepositStatus status = 9;
     google.protobuf.Timestamp    created_at     = 10 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];

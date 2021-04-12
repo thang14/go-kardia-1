@@ -7,7 +7,7 @@ import (
 	"github.com/kardiachain/go-kardia/signer/core"
 )
 
-var typesStandard = core.Types{
+var types = core.Types{
 	"EIP712Domain": {
 		{
 			Name: "name",
@@ -61,7 +61,7 @@ var typesStandard = core.Types{
 
 func WithDepositHash(d *dproto.Deposit, bridgeAddr common.Address) error {
 
-	var domainStandard = core.TypedDataDomain{
+	var domain = core.TypedDataDomain{
 		Name:              "KAI",
 		Version:           "1",
 		ChainId:           math.NewHexOrDecimal256(d.DestChainId),
@@ -69,13 +69,20 @@ func WithDepositHash(d *dproto.Deposit, bridgeAddr common.Address) error {
 		Salt:              "",
 	}
 
-	var messageStandard = map[string]interface{}{}
+	var msg = map[string]interface{}{
+		"sourceChainId": math.NewHexOrDecimal256(d.SourceChainId),
+		"destChainId":   math.NewHexOrDecimal256(d.DestChainId),
+		"depositId":     math.NewHexOrDecimal256(d.DepositId),
+		"depositor":     common.BytesToHash(d.Depositor).String(),
+		"recipient":     common.BytesToHash(d.Recipient).String(),
+		"amount":        math.NewHexOrDecimal256(d.Amount),
+	}
 
 	var typedData = core.TypedData{
-		Types:       typesStandard,
+		Types:       types,
 		PrimaryType: "Deposit",
-		Domain:      domainStandard,
-		Message:     messageStandard,
+		Domain:      domain,
+		Message:     msg,
 	}
 
 	hash := typedData.TypeHash(typedData.PrimaryType)
