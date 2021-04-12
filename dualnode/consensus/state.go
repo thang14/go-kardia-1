@@ -59,7 +59,7 @@ func (s *State) AddVote(vote *dproto.Vote) error {
 	return s.addVote(vote)
 }
 
-func (s *State) getDepositState(hash common.Hash) *depositState {
+func (s *State) getOrCreateDepositState(hash common.Hash) *depositState {
 	if s.dmap[hash] == nil {
 		s.dmap[hash] = &depositState{
 			signatures: make(map[common.Address][]byte),
@@ -72,7 +72,7 @@ func (s *State) getDepositState(hash common.Hash) *depositState {
 func (s *State) addVote(vote *dproto.Vote) error {
 	hash := common.BytesToHash(vote.Hash)
 	valAddr := common.BytesToAddress(vote.Addr)
-	dState := s.getDepositState(hash)
+	dState := s.getOrCreateDepositState(hash)
 	if dState.signatures[valAddr] == nil {
 		s.dmap[hash].signatures[valAddr] = vote.Signature
 		s.vpool.AddVote(vote)
@@ -86,7 +86,7 @@ func (s *State) signVote(vote *dproto.Vote) error {
 
 func (s *State) AddDeposit(d *dproto.Deposit) error {
 	hash := common.BytesToHash(d.Hash)
-	dState := s.getDepositState(hash)
+	dState := s.getOrCreateDepositState(hash)
 	dState.deposit = d
 	s.dByKey[depositKey(d.DestChainId, d.DepositId)] = hash
 
@@ -113,6 +113,7 @@ func (s *State) MarkDepositComplete(d *dproto.Deposit) error {
 	hash := common.BytesToHash(d.Hash)
 	s.vpool.MakeDepositCompleted(d)
 	delete(s.dmap, hash)
+	delete(s.dByKey, depositKey(d.DestChainId, d.DepositId))
 	return s.store.MarkDepositCompleted(d)
 }
 
@@ -136,7 +137,6 @@ func (s *State) GetDepositByID(key string) *dproto.Deposit {
 	if s.dmap[h] == nil {
 		return nil
 	}
-
 	return s.dmap[h].deposit
 }
 

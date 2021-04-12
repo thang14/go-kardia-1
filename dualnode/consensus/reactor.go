@@ -40,6 +40,7 @@ func newReactor(state *State, cfg *config.Config, depositC chan *dproto.Deposit,
 		depositC:  depositC,
 		valSetC:   vsC,
 		withdrawC: withdrawC,
+		state:     state,
 	}
 	r.BaseReactor = *p2p.NewBaseReactor("DualReactor", r)
 	return r
@@ -155,8 +156,4 @@ func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvMessageCapacity: MaxMsgSize,
 		},
 	}
-}
-
-func (r *Reactor) handleCleanup() error {
-	return nil
 }

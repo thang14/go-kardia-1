@@ -45,3 +45,12 @@ func (r *Reactor) handleUpdateValSet(vs *types.ValidatorSet) {
 		return
 	}
 }
+
+func (r *Reactor) handleCleanup() {
+	for _, ds := range r.state.dmap {
+		switch {
+		case ds.deposit != nil && r.state.withdraw[depositKey(ds.deposit.DepositId, ds.deposit.DepositId)]:
+			r.state.MarkDepositComplete(ds.deposit)
+		}
+	}
+}
