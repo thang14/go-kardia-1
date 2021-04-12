@@ -96,7 +96,7 @@ func (k *KardiaService) HeaderByNumberOrHash(ctx context.Context, blockNrOrHash 
 func (k *KardiaService) BlockByNumber(ctx context.Context, number rpc.BlockNumber) *types.Block {
 	// Return the latest block if rpc.LatestBlockNumber has been passed in
 	if number == rpc.LatestBlockNumber {
-		return k.blockchain.CurrentBlock()
+		return k.blockchain.GetBlockByHeight(k.blockchain.CurrentBlock().Height() - 1)
 	}
 	return k.blockchain.GetBlockByHeight(number.Uint64())
 }
