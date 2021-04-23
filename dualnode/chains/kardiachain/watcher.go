@@ -6,6 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kardiachain/go-kardia/types"
+
+	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/tss"
+
 	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/bridge"
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/store"
@@ -14,7 +18,6 @@ import (
 	"github.com/kardiachain/go-kardia/lib/common"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 	"github.com/kardiachain/go-kardia/rpc"
-	"github.com/kardiachain/go-kardia/types"
 )
 
 type Watcher struct {
@@ -30,6 +33,17 @@ type Watcher struct {
 	depositC  chan *dproto.Deposit
 	withdrawC chan dualTypes.Withdraw
 	vsChan    chan *dualTypes.ValidatorSet
+	internalC struct {
+		depositedC chan *bridge.BridgeDeposited
+		withdrawC  chan *bridge.BridgeWithdraw
+
+		vaultCreatedC      chan *tss.TssVaultCreated
+		vaultUpdatedC      chan *tss.TssVaultUpdated
+		vaultChainEditedC  chan *tss.TssVaultChainEdited
+		vaultChainRemovedC chan *tss.TssVaultChainRemoved
+		tokenAddedC        chan *tss.TssTokenAdded
+		tokenRemovedC      chan *tss.TssTokenRemoved
+	}
 }
 
 func newWatcher(client *KardiaClient, cfg *dualCfg.ChainManagerConfig) *Watcher {
@@ -45,10 +59,8 @@ func newWatcher(client *KardiaClient, cfg *dualCfg.ChainManagerConfig) *Watcher 
 }
 
 func (w *Watcher) Start() error {
-	depositedC := make(chan *bridge.BridgeDeposited, 2)
-	withdrawC := make(chan *bridge.BridgeWithdraw, 2)
 	go func() {
-		if err := w.watch(depositedC, withdrawC); err != nil {
+		if err := w.Watch(); err != nil {
 			fmt.Printf("watch blocks error: %s", err)
 		}
 	}()
@@ -60,30 +72,57 @@ func (w *Watcher) Stop() error {
 	return nil
 }
 
-func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan *bridge.BridgeWithdraw) error {
+func (w *Watcher) Watch() error {
 	lgr := w.client.logger
 	ctx := context.Background()
+	errC := make(chan error)
+
+	err := w.handleBridgeEvents(ctx, errC)
+	if err != nil {
+		lgr.Error("error while handling bridge events", "err", err)
+		errC <- fmt.Errorf("error while handling bridge events: %w", err)
+		return err
+	}
+	err = w.handleTssEvents(ctx, errC)
+	if err != nil {
+		lgr.Error("error while handling tss events", "err", err)
+		errC <- fmt.Errorf("error while handling tss events: %w", err)
+		return err
+	}
+	err = w.handleNewHeaders(ctx, errC)
+	if err != nil {
+		lgr.Error("error while handling new headers", "err", err)
+		errC <- fmt.Errorf("error while handling new headers: %w", err)
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errC:
+		return err
+	}
+}
+
+func (w *Watcher) handleBridgeEvents(ctx context.Context, errC chan error) error {
+	lgr := w.client.logger
 	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	f, err := bridge.NewBridgeFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
+	bridgeF, err := bridge.NewBridgeFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
 	if err != nil {
 		return fmt.Errorf("could not create KAI bridge filter: %w", err)
 	}
-
 	// Subscribe to token deposited events
-	depositedSub, err := f.WatchDeposited(&bind.WatchOpts{Context: timeout}, depositedC)
+	depositedSub, err := bridgeF.WatchDeposited(&bind.WatchOpts{Context: timeout}, w.internalC.depositedC)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to token deposited events: %w", err)
 	}
-
 	// Subscribe to token withdraw events
-	withdrawSub, err := f.WatchWithdraw(&bind.WatchOpts{Context: timeout}, withdrawC)
+	withdrawSub, err := bridgeF.WatchWithdraw(&bind.WatchOpts{Context: timeout}, w.internalC.withdrawC)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
 	}
-
-	errC := make(chan error)
 
 	// watch for dual events
 	go func() {
@@ -100,7 +139,7 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 				errC <- fmt.Errorf("error while processing withdraw event: %w", err)
 				return
 
-			case ev := <-depositedC:
+			case ev := <-w.internalC.depositedC:
 				blockHeight := rpc.BlockNumber(ev.Raw.BlockHeight)
 				b, err := w.client.KAIClient.BlockByHeight(ctx, &blockHeight)
 				if err != nil {
@@ -119,7 +158,7 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 				w.pendingLocksMtx.Lock()
 				w.pendingLocks[ev.Raw.TxHash] = dualEv
 				w.pendingLocksMtx.Unlock()
-			case ev := <-withdrawC:
+			case ev := <-w.internalC.withdrawC:
 				blockHeight := rpc.BlockNumber(ev.Raw.BlockHeight)
 				b, err := w.client.KAIClient.BlockByHeight(ctx, &blockHeight)
 				if err != nil {
@@ -141,7 +180,93 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 			}
 		}
 	}()
+	return nil
+}
 
+func (w *Watcher) handleTssEvents(ctx context.Context, errC chan error) error {
+	lgr := w.client.logger
+	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	tssF, err := tss.NewTssFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
+	if err != nil {
+		return fmt.Errorf("could not create KAI bridge filter: %w", err)
+	}
+	// Subscribe to token added events
+	tokenAddedSub, err := tssF.WatchTokenAdded(&bind.WatchOpts{Context: timeout}, w.internalC.tokenAddedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token added events: %w", err)
+	}
+	// Subscribe to token removed events
+	tokenRemovedSub, err := tssF.WatchTokenRemoved(&bind.WatchOpts{Context: timeout}, w.internalC.tokenRemovedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+	// Subscribe to vault created events
+	vaultCreatedSub, err := tssF.WatchVaultCreated(&bind.WatchOpts{Context: timeout}, w.internalC.vaultCreatedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+	// Subscribe to vault updated events
+	vaultUpdatedSub, err := tssF.WatchVaultUpdated(&bind.WatchOpts{Context: timeout}, w.internalC.vaultUpdatedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+	// Subscribe to vault edited events
+	vaultChainEditedSub, err := tssF.WatchVaultChainEdited(&bind.WatchOpts{Context: timeout}, w.internalC.vaultChainEditedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+	// Subscribe to vault removes events
+	vaultChainRemovedSub, err := tssF.WatchVaultChainRemoved(&bind.WatchOpts{Context: timeout}, w.internalC.vaultChainRemovedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-tokenAddedSub.Err():
+				lgr.Error("error while processing token added event", "err", err)
+				errC <- fmt.Errorf("error while processing token added event: %w", err)
+				return
+			case err := <-tokenRemovedSub.Err():
+				lgr.Error("error while processing token removed event", "err", err)
+				errC <- fmt.Errorf("error while processing token removed event: %w", err)
+				return
+			case err := <-vaultCreatedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+			case err := <-vaultUpdatedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+			case err := <-vaultChainEditedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+			case err := <-vaultChainRemovedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+
+			case <-w.internalC.tokenAddedC:
+			case <-w.internalC.tokenRemovedC:
+			case <-w.internalC.vaultCreatedC:
+			case <-w.internalC.vaultUpdatedC:
+			case <-w.internalC.vaultChainEditedC:
+			case <-w.internalC.vaultChainRemovedC:
+			}
+		}
+	}()
+	return nil
+}
+
+func (w *Watcher) handleNewHeaders(ctx context.Context, errC chan error) error {
+	lgr := w.client.logger
 	// Watch for new headers
 	headSink := make(chan *types.Header, 2)
 	headerSubscription, err := w.client.KAIClient.SubscribeNewHead(ctx, headSink)
@@ -190,11 +315,5 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 			}
 		}
 	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errC:
-		return err
-	}
+	return nil
 }
