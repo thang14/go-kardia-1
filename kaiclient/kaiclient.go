@@ -68,7 +68,7 @@ func (ec *Client) Close() {
 // Note that loading full blocks requires two requests. Use HeaderByHash
 // if you don't need all transactions or uncle headers.
 func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	return ec.getBlock(ctx, "kai_getBlockByHash", hash, true)
+	return ec.getBlock(ctx, "kai_getBlockByHash", hash)
 }
 
 // BlockByHeight returns a block from the current canonical chain. If number is nil, the
@@ -77,7 +77,7 @@ func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Blo
 // Note that loading full blocks requires two requests. Use HeaderByHeight
 // if you don't need all transactions or uncle headers.
 func (ec *Client) BlockByHeight(ctx context.Context, number *rpc.BlockNumber) (*types.Block, error) {
-	return ec.getBlock(ctx, "kai_getBlockByNumber", number, true)
+	return ec.getBlock(ctx, "kai_getBlockByNumber", number)
 }
 
 // BlockHeight returns the most recent block number

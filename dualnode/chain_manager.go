@@ -4,9 +4,6 @@ import (
 	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum"
 	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain"
 	"github.com/kardiachain/go-kardia/dualnode/config"
-	"github.com/kardiachain/go-kardia/dualnode/store"
-	"github.com/kardiachain/go-kardia/dualnode/types"
-	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 type Chain interface {
@@ -18,14 +15,14 @@ type ChainManager struct {
 	chains []Chain
 }
 
-func newChainManager(cfg *config.Config, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *ChainManager {
+func newChainManager(cfg *config.ChainManagerConfig) *ChainManager {
 	m := &ChainManager{}
-	for _, chainConfig := range cfg.Chains {
+	for _, chainConfig := range cfg.Cfg.Chains {
 		var chain Chain
 		if chainConfig.Type == "eth" {
-			chain = ethereum.NewChain(&chainConfig, s)
+			chain = ethereum.NewChain(cfg)
 		} else {
-			chain = kardiachain.NewChain(&chainConfig, s)
+			chain = kardiachain.NewChain(cfg)
 		}
 		m.chains = append(m.chains, chain)
 	}

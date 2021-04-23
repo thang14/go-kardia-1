@@ -11,11 +11,7 @@ node:
 chains:
   - type: eth
     endpoint: https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900
-    swapSMC:
-      address: c1fe56e3f58d3244f606306611a5d10c8333f1f6
-      abi: ""
+    bridgeSmcAddr: c1fe56e3f58d3244f606306611a5d10c8333f1f6
   - type: kai
     endpoint: http://10.10.0.251:8545
-    swapSMC:
-      address: c1fe56e3f58d3244f606306611a5d10c8333f1f6
-      abi: ""
+    bridgeSmcAddr: c1fe56e3f58d3244f606306611a5d10c8333f1f6

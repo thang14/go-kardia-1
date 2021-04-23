@@ -51,13 +51,15 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 		sv.vsChan,
 	)
 
-	sv.chainM = newChainManager(
-		cfg,
-		s,
-		sv.depositC,
-		sv.withdrawC,
-		sv.vsChan,
-	)
+	chainManagerCfg := &config.ChainManagerConfig{
+		Cfg:       cfg,
+		S:         s,
+		DepositC:  sv.depositC,
+		WithdrawC: sv.withdrawC,
+		VsC:       sv.vsChan,
+	}
+
+	sv.chainM = newChainManager(chainManagerCfg)
 
 	return sv, nil
 }

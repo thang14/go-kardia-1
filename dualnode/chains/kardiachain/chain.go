@@ -3,11 +3,6 @@ package kardiachain
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	"github.com/kardiachain/go-kardia/dualnode/store"
-
-	"github.com/kardiachain/go-kardia/dualnode/types"
 
 	"github.com/kardiachain/go-kardia/configs"
 	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
@@ -25,13 +20,23 @@ type Chain struct {
 	client *KardiaClient
 }
 
-func NewChain(chainCfg *config.ChainConfig, store *store.Store) *Chain {
+func NewChain(cfg *config.ChainManagerConfig) *Chain {
+	var chainCfg *config.ChainConfig
+	for _, c := range cfg.Cfg.Chains {
+		if c.Type == configs.KAISymbol {
+			chainCfg = &c
+			break
+		}
+	}
+	if chainCfg == nil {
+		panic("ETH light client is not available")
+	}
 	kaiClient, err := NewKardiaClient(chainCfg)
 	if err != nil {
-		panic(fmt.Errorf("cannot setup ETH client, err: %v", err))
+		panic(fmt.Errorf("cannot setup KAI client, err: %v", err))
 	}
 	return &Chain{
-		watcher: newWatcher(kaiClient, store),
+		watcher: newWatcher(kaiClient, cfg),
 
 		client: kaiClient,
 		config: chainCfg,
@@ -53,14 +58,6 @@ type KardiaClient struct {
 }
 
 func NewKardiaClient(chainCfg *config.ChainConfig) (*KardiaClient, error) {
-	swapSMCAbi, err := abi.JSON(strings.NewReader(chainCfg.SwapSMC.ABI))
-	if err != nil {
-		panic("cannot read swap smc abi")
-	}
-	swapSMC := &SwapSMC{
-		Address: common.HexToAddress(chainCfg.SwapSMC.Address),
-		ABI:     &swapSMCAbi,
-	}
 	logger := log.New()
 	logger.AddTag("DUAL-" + configs.KAISymbol)
 	client, err := kaiclient.Dial(chainCfg.Endpoint)
@@ -72,7 +69,6 @@ func NewKardiaClient(chainCfg *config.ChainConfig) (*KardiaClient, error) {
 	return &KardiaClient{
 		ChainConfig: chainCfg,
 		KAIClient:   client,
-		SwapSMC:     swapSMC,
 
 		ctx:    context.Background(),
 		logger: logger,
@@ -91,8 +87,4 @@ func (c *Chain) Stop() error {
 		return err
 	}
 	return nil
-}
-
-func (c *Chain) Event() chan *types.DualEvent {
-	return c.watcher.GetDualEventsChannel()
 }

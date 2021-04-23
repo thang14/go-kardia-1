@@ -20,7 +20,6 @@ package filters
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/kardiachain/go-kardia/kai/events"
 	"github.com/kardiachain/go-kardia/lib/bloombits"
