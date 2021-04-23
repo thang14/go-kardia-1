@@ -33,6 +33,10 @@ type Watcher struct {
 	depositC  chan *dproto.Deposit
 	withdrawC chan types.Withdraw
 	vsChan    chan *types.ValidatorSet
+	internalC struct {
+		depositedC chan *bridge.BridgeDeposited
+		withdrawC  chan *bridge.BridgeWithdraw
+	}
 }
 
 func newWatcher(client *ETHLightClient, cfg *dualCfg.ChainManagerConfig) *Watcher {
@@ -48,10 +52,8 @@ func newWatcher(client *ETHLightClient, cfg *dualCfg.ChainManagerConfig) *Watche
 }
 
 func (w *Watcher) Start() error {
-	depositedC := make(chan *bridge.BridgeDeposited, 2)
-	withdrawC := make(chan *bridge.BridgeWithdraw, 2)
 	go func() {
-		if err := w.watch(depositedC, withdrawC); err != nil {
+		if err := w.Watch(); err != nil {
 			fmt.Printf("watch blocks error: %s", err)
 		}
 	}()
@@ -63,7 +65,7 @@ func (w *Watcher) Stop() error {
 	return nil
 }
 
-func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan *bridge.BridgeWithdraw) error {
+func (w *Watcher) Watch() error {
 	lgr := w.client.logger
 	ctx := context.Background()
 	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -75,13 +77,13 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 	}
 
 	// Subscribe to token deposited events
-	depositedSub, err := f.WatchDeposited(&bind.WatchOpts{Context: timeout}, depositedC)
+	depositedSub, err := f.WatchDeposited(&bind.WatchOpts{Context: timeout}, w.internalC.depositedC)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to token deposited events: %w", err)
 	}
 
 	// Subscribe to token withdraw events
-	withdrawSub, err := f.WatchWithdraw(&bind.WatchOpts{Context: timeout}, withdrawC)
+	withdrawSub, err := f.WatchWithdraw(&bind.WatchOpts{Context: timeout}, w.internalC.withdrawC)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
 	}
@@ -103,7 +105,7 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 				errC <- fmt.Errorf("error while processing withdraw event: %w", err)
 				return
 
-			case ev := <-depositedC:
+			case ev := <-w.internalC.depositedC:
 				b, err := w.client.ETHClient.BlockByNumber(ctx, new(big.Int).SetUint64(ev.Raw.BlockNumber))
 				if err != nil {
 					lgr.Error("error while getting block from ETH client", "err", err)
@@ -121,7 +123,7 @@ func (w *Watcher) watch(depositedC chan *bridge.BridgeDeposited, withdrawC chan 
 				w.pendingLocksMtx.Lock()
 				w.pendingLocks[ev.Raw.TxHash] = dualEv
 				w.pendingLocksMtx.Unlock()
-			case ev := <-withdrawC:
+			case ev := <-w.internalC.withdrawC:
 				b, err := w.client.ETHClient.BlockByNumber(ctx, new(big.Int).SetUint64(ev.Raw.BlockNumber))
 				if err != nil {
 					lgr.Error("error while getting block from ETH client", "err", err)

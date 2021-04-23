@@ -19,11 +19,6 @@ import (
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
-var (
-	depositedC = make(chan *bridge.BridgeDeposited, 2)
-	withdrawC  = make(chan *bridge.BridgeWithdraw, 2)
-)
-
 func initChain() (*Watcher, error) {
 	client, err := NewETHLightClient(dualCfg.TestDualETHChainConfig())
 	if err != nil {
@@ -95,7 +90,7 @@ func TestWatcher_watch(t *testing.T) {
 	w, err := initChain()
 	assert.Nilf(t, err, "cannot init watcher for testing, err: %v", err)
 	go func() {
-		if err := w.watch(depositedC, withdrawC); err != nil {
+		if err := w.Watch(); err != nil {
 			t.Fatalf("watch blocks error: %s", err)
 		}
 	}()
@@ -103,11 +98,11 @@ func TestWatcher_watch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if ev, ok := tt.ev.(*bridge.BridgeDeposited); ok {
-				depositedC <- ev
+				w.internalC.depositedC <- ev
 				time.Sleep(2 * time.Second)
 				assert.NotNilf(t, w.pendingLocks[ev.Raw.TxHash], "pendingLocks must not be nil")
 			} else if ev, ok := tt.ev.(*bridge.BridgeWithdraw); ok {
-				withdrawC <- ev
+				w.internalC.withdrawC <- ev
 				time.Sleep(2 * time.Second)
 				assert.NotNilf(t, w.pendingLocks[ev.Raw.TxHash], "pendingLocks must not be nil")
 			} else {
