@@ -6,6 +6,7 @@ require (
 	github.com/Workiva/go-datastructures v1.0.52
 	github.com/allegro/bigcache v1.2.1 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20190712234253-ed1100a1c015
+	github.com/binance-chain/tss-lib v1.3.2 // indirect
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1

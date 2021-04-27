@@ -18,6 +18,7 @@ package common
 
 import (
 	"bytes"
+	"crypto/elliptic"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -434,3 +435,31 @@ var (
 	Big256 = big.NewInt(256)
 	Big257 = big.NewInt(257)
 )
+
+func HashToInt(hash []byte) *big.Int {
+	c := elliptic.P256()
+	return hashToInt(hash, c)
+}
+
+// from http://golang.org/src/pkg/crypto/ecdsa/ecdsa.go
+
+// hashToInt converts a hash value to an integer. There is some disagreement
+// about how this is done. [NSA] suggests that this is done in the obvious
+// manner, but [SECG] truncates the hash to the bit-length of the curve order
+// first. We follow [SECG] because that's what OpenSSL does. Additionally,
+// OpenSSL right shifts excess bits from the number if the hash is too large
+// and we mirror that too.
+func hashToInt(hash []byte, c elliptic.Curve) *big.Int {
+	orderBits := c.Params().N.BitLen()
+	orderBytes := (orderBits + 7) / 8
+	if len(hash) > orderBytes {
+		hash = hash[:orderBytes]
+	}
+
+	ret := new(big.Int).SetBytes(hash)
+	excess := len(hash)*8 - orderBits
+	if excess > 0 {
+		ret.Rsh(ret, uint(excess))
+	}
+	return ret
+}
