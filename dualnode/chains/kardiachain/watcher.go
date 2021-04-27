@@ -6,11 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kardiachain/go-kardia/types"
-
-	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/tss"
-
 	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/bridge"
+	tssAbi "github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/tss"
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	dualTypes "github.com/kardiachain/go-kardia/dualnode/types"
@@ -18,6 +15,7 @@ import (
 	"github.com/kardiachain/go-kardia/lib/common"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 	"github.com/kardiachain/go-kardia/rpc"
+	"github.com/kardiachain/go-kardia/types"
 )
 
 type Watcher struct {
@@ -37,24 +35,24 @@ type Watcher struct {
 		depositedC chan *bridge.BridgeDeposited
 		withdrawC  chan *bridge.BridgeWithdraw
 
-		vaultCreatedC      chan *tss.TssVaultCreated
-		vaultUpdatedC      chan *tss.TssVaultUpdated
-		vaultChainEditedC  chan *tss.TssVaultChainEdited
-		vaultChainRemovedC chan *tss.TssVaultChainRemoved
-		tokenAddedC        chan *tss.TssTokenAdded
-		tokenRemovedC      chan *tss.TssTokenRemoved
+		vaultCreatedC      chan *tssAbi.TssVaultCreated
+		vaultUpdatedC      chan *tssAbi.TssVaultUpdated
+		vaultChainEditedC  chan *tssAbi.TssVaultChainEdited
+		vaultChainRemovedC chan *tssAbi.TssVaultChainRemoved
+		tokenAddedC        chan *tssAbi.TssTokenAdded
+		tokenRemovedC      chan *tssAbi.TssTokenRemoved
 	}
 }
 
-func newWatcher(client *KardiaClient, cfg *dualCfg.ChainManagerConfig) *Watcher {
+func newWatcher(client *KardiaClient, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan dualTypes.Withdraw, vsC chan *dualTypes.ValidatorSet) *Watcher {
 	return &Watcher{
 		quit:         make(chan struct{}, 1),
 		client:       client,
 		pendingLocks: make(map[common.Hash]*dualTypes.DualEvent),
-		store:        cfg.S,
-		depositC:     cfg.DepositC,
-		withdrawC:    cfg.WithdrawC,
-		vsChan:       cfg.VsChan,
+		store:        s,
+		depositC:     depositC,
+		withdrawC:    withdrawC,
+		vsChan:       vsC,
 	}
 }
 
@@ -85,8 +83,8 @@ func (w *Watcher) Watch() error {
 	}
 	err = w.handleTssEvents(ctx, errC)
 	if err != nil {
-		lgr.Error("error while handling tss events", "err", err)
-		errC <- fmt.Errorf("error while handling tss events: %w", err)
+		lgr.Error("error while handling tssAbi events", "err", err)
+		errC <- fmt.Errorf("error while handling tssAbi events: %w", err)
 		return err
 	}
 	err = w.handleNewHeaders(ctx, errC)
@@ -188,7 +186,7 @@ func (w *Watcher) handleTssEvents(ctx context.Context, errC chan error) error {
 	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	tssF, err := tss.NewTssFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
+	tssF, err := tssAbi.NewTssFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
 	if err != nil {
 		return fmt.Errorf("could not create KAI bridge filter: %w", err)
 	}
@@ -256,6 +254,7 @@ func (w *Watcher) handleTssEvents(ctx context.Context, errC chan error) error {
 			case <-w.internalC.tokenAddedC:
 			case <-w.internalC.tokenRemovedC:
 			case <-w.internalC.vaultCreatedC:
+
 			case <-w.internalC.vaultUpdatedC:
 			case <-w.internalC.vaultChainEditedC:
 			case <-w.internalC.vaultChainRemovedC:

@@ -4,6 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/kardiachain/go-kardia/dualnode/types"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
+
+	"github.com/kardiachain/go-kardia/dualnode/store"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
@@ -52,14 +57,7 @@ func NewETHLightClient(chainCfg *config.ChainConfig) (*ETHLightClient, error) {
 	}, nil
 }
 
-func NewChain(cfg *config.ChainManagerConfig) *Chain {
-	var chainCfg *config.ChainConfig
-	for _, c := range cfg.Cfg.Chains {
-		if c.Type == configs.ETHSymbol {
-			chainCfg = &c
-			break
-		}
-	}
+func NewChain(chainCfg *config.ChainConfig, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Chain {
 	if chainCfg == nil {
 		panic("ETH light client is not available")
 	}
@@ -68,7 +66,7 @@ func NewChain(cfg *config.ChainManagerConfig) *Chain {
 		panic(fmt.Errorf("cannot setup ETH light client, err: %v", err))
 	}
 	return &Chain{
-		watcher: newWatcher(ethClient, cfg),
+		watcher: newWatcher(ethClient, s, depositC, withdrawC, vsC),
 
 		client: ethClient,
 		config: chainCfg,

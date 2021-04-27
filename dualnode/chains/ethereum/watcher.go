@@ -39,15 +39,15 @@ type Watcher struct {
 	}
 }
 
-func newWatcher(client *ETHLightClient, cfg *dualCfg.ChainManagerConfig) *Watcher {
+func newWatcher(client *ETHLightClient, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Watcher {
 	return &Watcher{
 		quit:         make(chan struct{}, 1),
 		client:       client,
-		store:        cfg.S,
+		store:        s,
 		pendingLocks: make(map[ethCommon.Hash]*types.DualEvent),
-		depositC:     cfg.DepositC,
-		withdrawC:    cfg.WithdrawC,
-		vsChan:       cfg.VsChan,
+		depositC:     depositC,
+		withdrawC:    withdrawC,
+		vsChan:       vsC,
 	}
 }
 

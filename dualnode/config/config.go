@@ -31,9 +31,12 @@ type ChainManagerConfig struct {
 	Cfg *Config
 	S   *store.Store
 
-	DepositC  chan *dproto.Deposit
-	WithdrawC chan types.Withdraw
-	VsChan    chan *types.ValidatorSet
+	// deposit channel
+	depositC chan *dproto.Deposit
+	// withdraw channel
+	withdrawC chan types.Withdraw
+	// validator set channel
+	vsC chan *types.ValidatorSet
 }
 
 func RopstenDualETHChainConfig() *ChainConfig {

@@ -18,13 +18,12 @@ type Service struct {
 	state    *consensus.State
 	cReactor *consensus.Reactor
 	chainM   *ChainManager
-
 	// deposit channel
 	depositC chan *dproto.Deposit
 	// withdraw channel
 	withdrawC chan types.Withdraw
 	// validator set channel
-	vsChan chan *types.ValidatorSet
+	vsC chan *types.ValidatorSet
 }
 
 func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
@@ -40,7 +39,7 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 		state:     cState,
 		depositC:  make(chan *dproto.Deposit),
 		withdrawC: make(chan types.Withdraw),
-		vsChan:    make(chan *types.ValidatorSet),
+		vsC:       make(chan *types.ValidatorSet),
 	}
 
 	sv.cReactor = consensus.NewReactor(
@@ -48,18 +47,16 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 		cfg,
 		sv.depositC,
 		sv.withdrawC,
-		sv.vsChan,
+		sv.vsC,
 	)
 
-	chainManagerCfg := &config.ChainManagerConfig{
-		Cfg:       cfg,
-		S:         s,
-		DepositC:  sv.depositC,
-		WithdrawC: sv.withdrawC,
-		VsC:       sv.vsChan,
-	}
-
-	sv.chainM = newChainManager(chainManagerCfg)
+	sv.chainM = newChainManager(
+		cfg,
+		s,
+		sv.depositC,
+		sv.withdrawC,
+		sv.vsC,
+	)
 
 	return sv, nil
 }
@@ -67,7 +64,7 @@ func New(ctx *node.ServiceContext, cfg *config.Config) (*Service, error) {
 // Start implements Service, starting all internal goroutines needed by the
 // Kardia protocol implementation.
 func (s *Service) Start(srvr *p2p.Switch) error {
-	srvr.AddReactor("BLOCKCHAIN", s.cReactor)
+	srvr.AddReactor("BRIDGE", s.cReactor)
 	return s.chainM.Start()
 }
 

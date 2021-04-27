@@ -26,17 +26,7 @@ func initChain() (*Watcher, error) {
 	}
 	db := memorydb.New()
 	s := store.New(db)
-	chainManagerCfg := &dualCfg.ChainManagerConfig{
-		Cfg: &dualCfg.Config{
-			Chains:   []dualCfg.ChainConfig{*dualCfg.TestDualETHChainConfig()},
-			LogLevel: "info",
-		},
-		S:         s,
-		DepositC:  make(chan *dproto.Deposit),
-		WithdrawC: make(chan types.Withdraw),
-		VsChan:    make(chan *types.ValidatorSet),
-	}
-	watcher := newWatcher(client, chainManagerCfg)
+	watcher := newWatcher(client, s, make(chan *dproto.Deposit), make(chan types.Withdraw), make(chan *types.ValidatorSet))
 	err = watcher.Start()
 	if err != nil {
 		return nil, fmt.Errorf("cannot start ETH watcher, err %v", err)
