@@ -23,9 +23,9 @@ func newChainManager(cfg *config.Config, s *store.Store, depositC chan *dproto.D
 	for _, chainConfig := range cfg.Chains {
 		var chain Chain
 		if chainConfig.Type == "eth" {
-			chain = ethereum.NewChain(&chainConfig, s)
+			chain = ethereum.NewChain(&chainConfig, s, depositC, withdrawC, vsC)
 		} else {
-			chain = kardiachain.NewChain(&chainConfig, s)
+			chain = kardiachain.NewChain(&chainConfig, s, depositC, withdrawC, vsC)
 		}
 		m.chains = append(m.chains, chain)
 	}

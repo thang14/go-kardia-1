@@ -2,7 +2,10 @@ package config
 
 import (
 	"github.com/kardiachain/go-kardia/configs"
+	"github.com/kardiachain/go-kardia/dualnode/store"
+	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/node"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 var (
@@ -16,17 +19,24 @@ type Config struct {
 	Key      string        `yaml:"key"`
 }
 
-type Contract struct {
-	Address string `yaml:"address"`
-	ABI     string `yaml:"abi"`
-}
-
 type ChainConfig struct {
 	Type     string `yaml:"type"`
 	ChainID  int64  `yaml:"chainId"`
 	Endpoint string `yaml:"endpoint"`
 
-	SwapSMC *Contract `json:"swapSMC"`
+	BridgeSmcAddr string `yaml:"bridgeSmcAddr"`
+}
+
+type ChainManagerConfig struct {
+	Cfg *Config
+	S   *store.Store
+
+	// deposit channel
+	depositC chan *dproto.Deposit
+	// withdraw channel
+	withdrawC chan types.Withdraw
+	// validator set channel
+	vsC chan *types.ValidatorSet
 }
 
 func RopstenDualETHChainConfig() *ChainConfig {
@@ -35,23 +45,17 @@ func RopstenDualETHChainConfig() *ChainConfig {
 		ChainID:  2,
 		Endpoint: "https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900",
 
-		SwapSMC: &Contract{
-			Address: "0x0",
-			ABI:     SwapSMCAbi,
-		},
+		BridgeSmcAddr: "0x",
 	}
 }
 
 func TestDualETHChainConfig() *ChainConfig {
 	return &ChainConfig{
 		Type:     configs.ETHSymbol,
-		ChainID:  3,
-		Endpoint: "https://ropsten.infura.io/v3/ccb2e224843840dc99f3261937eb1900",
+		ChainID:  1,
+		Endpoint: "wss://mainnet.infura.io/ws/v3/ccb2e224843840dc99f3261937eb1900",
 
-		SwapSMC: &Contract{
-			Address: TestSwapSMCAddress,
-			ABI:     TestSwapSMCABI,
-		},
+		BridgeSmcAddr: "0x",
 	}
 }
 
@@ -59,12 +63,9 @@ func TestDualKardiaChainConfig() *ChainConfig {
 	return &ChainConfig{
 		Type:     configs.KAISymbol,
 		ChainID:  0,
-		Endpoint: "http://10.10.0.251:8545",
+		Endpoint: "wss://ws-dev.kardiachain.io",
 
-		SwapSMC: &Contract{
-			Address: TestSwapSMCAddressKAITestnet,
-			ABI:     TestSwapSMCABI,
-		},
+		BridgeSmcAddr: "0x",
 	}
 }
 
@@ -77,11 +78,15 @@ func DefaultConfig() *Config {
 				Type:     configs.KAISymbol,
 				ChainID:  1,
 				Endpoint: "1",
+
+				BridgeSmcAddr: "0x",
 			},
 			{
 				Type:     configs.ETHSymbol,
 				ChainID:  1,
 				Endpoint: "1",
+
+				BridgeSmcAddr: "0x",
 			},
 		},
 	}

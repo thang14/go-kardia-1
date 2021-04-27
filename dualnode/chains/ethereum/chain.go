@@ -3,7 +3,9 @@ package ethereum
 import (
 	"context"
 	"fmt"
-	"strings"
+
+	"github.com/kardiachain/go-kardia/dualnode/types"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 
 	"github.com/kardiachain/go-kardia/dualnode/store"
 
@@ -13,7 +15,6 @@ import (
 	"github.com/kardiachain/go-kardia/configs"
 	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	"github.com/kardiachain/go-kardia/dualnode/config"
-	"github.com/kardiachain/go-kardia/dualnode/types"
 	"github.com/kardiachain/go-kardia/lib/abi"
 	"github.com/kardiachain/go-kardia/lib/log"
 )
@@ -33,21 +34,12 @@ type SwapSMC struct {
 type ETHLightClient struct {
 	ChainConfig *config.ChainConfig
 	ETHClient   *ethclient.Client
-	*SwapSMC
 
 	ctx    context.Context
 	logger log.Logger
 }
 
 func NewETHLightClient(chainCfg *config.ChainConfig) (*ETHLightClient, error) {
-	swapSMCAbi, err := abi.JSON(strings.NewReader(chainCfg.SwapSMC.ABI))
-	if err != nil {
-		panic("cannot read swap smc abi")
-	}
-	swapSMC := &SwapSMC{
-		Address: common.HexToAddress(chainCfg.SwapSMC.Address),
-		ABI:     &swapSMCAbi,
-	}
 	logger := log.New()
 	logger.AddTag("DUAL-" + configs.ETHSymbol)
 	client, err := ethclient.Dial(chainCfg.Endpoint)
@@ -59,20 +51,22 @@ func NewETHLightClient(chainCfg *config.ChainConfig) (*ETHLightClient, error) {
 	return &ETHLightClient{
 		ChainConfig: chainCfg,
 		ETHClient:   client,
-		SwapSMC:     swapSMC,
 
 		ctx:    context.Background(),
 		logger: logger,
 	}, nil
 }
 
-func NewChain(chainCfg *config.ChainConfig, store *store.Store) *Chain {
+func NewChain(chainCfg *config.ChainConfig, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Chain {
+	if chainCfg == nil {
+		panic("ETH light client is not available")
+	}
 	ethClient, err := NewETHLightClient(chainCfg)
 	if err != nil {
-		panic(fmt.Errorf("cannot setup ETH client, err: %v", err))
+		panic(fmt.Errorf("cannot setup ETH light client, err: %v", err))
 	}
 	return &Chain{
-		watcher: newWatcher(ethClient, store),
+		watcher: newWatcher(ethClient, s, depositC, withdrawC, vsC),
 
 		client: ethClient,
 		config: chainCfg,
@@ -91,8 +85,4 @@ func (c *Chain) Stop() error {
 		return err
 	}
 	return nil
-}
-
-func (c *Chain) Event() chan *types.DualEvent {
-	return c.watcher.GetDualEventsChannel()
 }

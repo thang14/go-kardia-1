@@ -1,62 +1,64 @@
 package kardiachain
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"time"
 
-	"github.com/kardiachain/go-kardia/dualnode/store"
-
-	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
-
-	"github.com/kardiachain/go-kardia"
+	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/bridge"
+	tssAbi "github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/tss"
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
+	"github.com/kardiachain/go-kardia/dualnode/store"
 	dualTypes "github.com/kardiachain/go-kardia/dualnode/types"
+	"github.com/kardiachain/go-kardia/lib/abi/bind"
 	"github.com/kardiachain/go-kardia/lib/common"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
+	"github.com/kardiachain/go-kardia/rpc"
+	"github.com/kardiachain/go-kardia/types"
 )
 
 type Watcher struct {
 	quit chan struct{}
 
 	client *KardiaClient
-	events chan *dualTypes.DualEvent
 
-	store      *store.Store
-	checkpoint uint64
-	dualTopics [][]common.Hash
-}
+	minConfirmations uint64
+	pendingLocks     map[common.Hash]*dualTypes.DualEvent
+	pendingLocksMtx  sync.Mutex
 
-func newWatcher(client *KardiaClient, store *store.Store) *Watcher {
-	return &Watcher{
-		quit:   make(chan struct{}, 1),
-		client: client,
-		store:  store,
-		events: make(chan *dualTypes.DualEvent, dualCfg.DualEventChanSize),
+	store     *store.Store
+	depositC  chan *dproto.Deposit
+	withdrawC chan dualTypes.Withdraw
+	vsChan    chan *dualTypes.ValidatorSet
+	internalC struct {
+		depositedC chan *bridge.BridgeDeposited
+		withdrawC  chan *bridge.BridgeWithdraw
+
+		vaultCreatedC      chan *tssAbi.TssVaultCreated
+		vaultUpdatedC      chan *tssAbi.TssVaultUpdated
+		vaultChainEditedC  chan *tssAbi.TssVaultChainEdited
+		vaultChainRemovedC chan *tssAbi.TssVaultChainRemoved
+		tokenAddedC        chan *tssAbi.TssTokenAdded
+		tokenRemovedC      chan *tssAbi.TssTokenRemoved
 	}
 }
 
-func (w *Watcher) GetDualEventsChannel() chan *dualTypes.DualEvent {
-	return w.events
+func newWatcher(client *KardiaClient, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan dualTypes.Withdraw, vsC chan *dualTypes.ValidatorSet) *Watcher {
+	return &Watcher{
+		quit:         make(chan struct{}, 1),
+		client:       client,
+		pendingLocks: make(map[common.Hash]*dualTypes.DualEvent),
+		store:        s,
+		depositC:     depositC,
+		withdrawC:    withdrawC,
+		vsChan:       vsC,
+	}
 }
 
 func (w *Watcher) Start() error {
-	checkpoint, err := w.store.GetCheckpoint(w.client.ChainConfig.ChainID)
-	if err != nil {
-		w.client.logger.Error("Cannot get old checkpoint", "chainID", w.client.ChainConfig.ChainID, "err", err)
-	}
-	// update checkpoint
-	if w.checkpoint <= 0 {
-		latestBlockHeight, err := w.client.KAIClient.BlockHeight(w.client.ctx)
-		if err != nil {
-			w.client.logger.Error("Cannot get latest Kardia block", "err", err)
-			return err
-		}
-		w.checkpoint = latestBlockHeight
-	} else {
-		w.checkpoint = checkpoint
-	}
-	w.client.logger.Info("KardiaChain watcher started at", "height", w.checkpoint)
 	go func() {
-		if err := w.watch(); err != nil {
+		if err := w.Watch(); err != nil {
 			fmt.Printf("watch blocks error: %s", err)
 		}
 	}()
@@ -68,120 +70,249 @@ func (w *Watcher) Stop() error {
 	return nil
 }
 
-func (w *Watcher) watch() error {
-	// init a ticker for polling dual events
-	var (
-		pollingEventsFreq = dualCfg.DualEventFreq
-		pollingEventsCh   = make(chan struct{}, 1)
-		pollingEventsTk   = time.NewTicker(pollingEventsFreq)
-	)
-	defer pollingEventsTk.Stop()
-	for {
-		select {
-		case <-w.quit:
-			return nil
-		case <-pollingEventsTk.C:
+func (w *Watcher) Watch() error {
+	lgr := w.client.logger
+	ctx := context.Background()
+	errC := make(chan error)
+
+	err := w.handleBridgeEvents(ctx, errC)
+	if err != nil {
+		lgr.Error("error while handling bridge events", "err", err)
+		errC <- fmt.Errorf("error while handling bridge events: %w", err)
+		return err
+	}
+	err = w.handleTssEvents(ctx, errC)
+	if err != nil {
+		lgr.Error("error while handling tssAbi events", "err", err)
+		errC <- fmt.Errorf("error while handling tssAbi events: %w", err)
+		return err
+	}
+	err = w.handleNewHeaders(ctx, errC)
+	if err != nil {
+		lgr.Error("error while handling new headers", "err", err)
+		errC <- fmt.Errorf("error while handling new headers: %w", err)
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errC:
+		return err
+	}
+}
+
+func (w *Watcher) handleBridgeEvents(ctx context.Context, errC chan error) error {
+	lgr := w.client.logger
+	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	bridgeF, err := bridge.NewBridgeFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
+	if err != nil {
+		return fmt.Errorf("could not create KAI bridge filter: %w", err)
+	}
+	// Subscribe to token deposited events
+	depositedSub, err := bridgeF.WatchDeposited(&bind.WatchOpts{Context: timeout}, w.internalC.depositedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token deposited events: %w", err)
+	}
+	// Subscribe to token withdraw events
+	withdrawSub, err := bridgeF.WatchWithdraw(&bind.WatchOpts{Context: timeout}, w.internalC.withdrawC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+
+	// watch for dual events
+	go func() {
+		for {
 			select {
-			case pollingEventsCh <- struct{}{}:
-			default:
-			}
+			case <-ctx.Done():
+				return
+			case err := <-depositedSub.Err():
+				lgr.Error("error while processing deposited event", "err", err)
+				errC <- fmt.Errorf("error while processing deposited event: %w", err)
+				return
+			case err := <-withdrawSub.Err():
+				lgr.Error("error while processing withdraw event", "err", err)
+				errC <- fmt.Errorf("error while processing withdraw event: %w", err)
+				return
 
-		case <-pollingEventsCh:
-			// read dual events from filtered logs
-			dualEvents, err := w.GetLatestDualEvents()
-			if err != nil {
-				w.client.logger.Warn("Cannot get latest dual events", "err", err, "checkpoint", w.checkpoint)
-				continue
-			}
-			// send dual events to events channel
-			for i := range dualEvents {
-				decodedEvent, err := w.client.SwapSMC.ABI.EventByID(dualEvents[i].Topics[0])
+			case ev := <-w.internalC.depositedC:
+				blockHeight := rpc.BlockNumber(ev.Raw.BlockHeight)
+				b, err := w.client.KAIClient.BlockByHeight(ctx, &blockHeight)
 				if err != nil {
-					w.client.logger.Warn("Cannot decode dual event", "err", err, "checkpoint", w.checkpoint, "event", dualEvents[i])
-					continue
+					lgr.Error("error while getting block from KAI client", "err", err)
+					errC <- fmt.Errorf("error while getting block from KAI client: %w", err)
+					return
 				}
-				// extend event data to current dual events
-				dualEvents[i].ID = decodedEvent.ID
-				dualEvents[i].RawName = decodedEvent.RawName
-				dualEvents[i].Inputs = decodedEvent.Inputs
-				dualEvents[i].Sig = decodedEvent.Sig
-
-				// unpack event arguments
-				dualEvents[i].Arguments, dualEvents[i].Source, dualEvents[i].Destination, err = dualCmn.UnpackDualEventIntoMap(w.client.ABI,
-					dualEvents[i], w.client.ChainConfig.ChainID)
+				dualEv := &dualTypes.DualEvent{
+					Source:      1,
+					Destination: ev.DestChainId.Int64(),
+					Arguments:   ev,
+					Timestamp:   b.Time(),
+					RawName:     dualCfg.DepositedEventRawName,
+					Raw:         ev.Raw,
+				}
+				w.pendingLocksMtx.Lock()
+				w.pendingLocks[ev.Raw.TxHash] = dualEv
+				w.pendingLocksMtx.Unlock()
+			case ev := <-w.internalC.withdrawC:
+				blockHeight := rpc.BlockNumber(ev.Raw.BlockHeight)
+				b, err := w.client.KAIClient.BlockByHeight(ctx, &blockHeight)
 				if err != nil {
-					w.client.logger.Warn("Cannot unpack dual event", "err", err, "dualEvent", dualEvents[i])
-					continue
+					lgr.Error("error while getting block from KAI client", "err", err)
+					errC <- fmt.Errorf("error while getting block from KAI client: %w", err)
+					return
 				}
-
-				// send qualified to dual event channel for further actions
-				if dualEvents[i].Source != -1 && dualEvents[i].Destination != -1 {
-					w.events <- dualEvents[i]
+				dualEv := &dualTypes.DualEvent{
+					Source:      ev.SourceChainId.Int64(),
+					Destination: 1,
+					Arguments:   ev,
+					Timestamp:   b.Time(),
+					RawName:     dualCfg.WithdrawEventRawName,
+					Raw:         ev.Raw,
 				}
+				w.pendingLocksMtx.Lock()
+				w.pendingLocks[ev.Raw.TxHash] = dualEv
+				w.pendingLocksMtx.Unlock()
 			}
-		default:
 		}
-	}
+	}()
+	return nil
 }
 
-func (w *Watcher) GetLatestDualEvents() ([]*dualTypes.DualEvent, error) {
-	latestBlock, err := w.client.KAIClient.BlockHeight(w.client.ctx)
+func (w *Watcher) handleTssEvents(ctx context.Context, errC chan error) error {
+	lgr := w.client.logger
+	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	tssF, err := tssAbi.NewTssFilterer(common.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.KAIClient)
 	if err != nil {
-		w.client.logger.Error("Cannot get latest ETH block", "err", err)
-		return nil, err
+		return fmt.Errorf("could not create KAI bridge filter: %w", err)
 	}
-	if w.checkpoint > latestBlock {
-		// prevent grabbing events of a block multiple times
-		return nil, nil
-	}
-	topics, err := w.getDualEventTopics()
+	// Subscribe to token added events
+	tokenAddedSub, err := tssF.WatchTokenAdded(&bind.WatchOpts{Context: timeout}, w.internalC.tokenAddedC)
 	if err != nil {
-		w.client.logger.Error("Cannot get dual event topics", "err", err)
-		return nil, err
+		return fmt.Errorf("failed to subscribe to token added events: %w", err)
 	}
-	query := kardia.FilterQuery{
-		FromBlock: w.checkpoint,
-		ToBlock:   latestBlock,
-		Addresses: []common.Address{w.client.SwapSMC.Address},
-		Topics:    topics,
-	}
-	w.checkpoint = latestBlock + 1 // increase checkpoint to prevent grabbing events of a block multiple times
-	err = w.store.SetCheckpoint(w.checkpoint, w.client.ChainConfig.ChainID)
+	// Subscribe to token removed events
+	tokenRemovedSub, err := tssF.WatchTokenRemoved(&bind.WatchOpts{Context: timeout}, w.internalC.tokenRemovedC)
 	if err != nil {
-		w.client.logger.Error("Cannot store checkpoint to store", "err", err, "chainID", w.client.ChainConfig.ChainID, "checkpoint", w.checkpoint)
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
 	}
-	w.client.logger.Debug("Dual events query", "query", query)
-	logs, err := w.client.KAIClient.FilterLogs(w.client.ctx, query)
+	// Subscribe to vault created events
+	vaultCreatedSub, err := tssF.WatchVaultCreated(&bind.WatchOpts{Context: timeout}, w.internalC.vaultCreatedC)
 	if err != nil {
-		w.client.logger.Error("Cannot get dual event", "err", err, "FromBlock", query.FromBlock, "ToBlock", query.ToBlock)
-		return nil, err
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
 	}
-	result := make([]*dualTypes.DualEvent, len(logs))
-	for i := range logs {
-		result[i] = &dualTypes.DualEvent{
-			Address:     common.HexToAddress(logs[i].Address.Hex()),
-			Topics:      logs[i].Topics,
-			Data:        logs[i].Data,
-			BlockHeight: logs[i].BlockHeight,
-			TxHash:      common.BytesToHash(logs[i].TxHash.Bytes()),
+	// Subscribe to vault updated events
+	vaultUpdatedSub, err := tssF.WatchVaultUpdated(&bind.WatchOpts{Context: timeout}, w.internalC.vaultUpdatedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+	// Subscribe to vault edited events
+	vaultChainEditedSub, err := tssF.WatchVaultChainEdited(&bind.WatchOpts{Context: timeout}, w.internalC.vaultChainEditedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+	// Subscribe to vault removes events
+	vaultChainRemovedSub, err := tssF.WatchVaultChainRemoved(&bind.WatchOpts{Context: timeout}, w.internalC.vaultChainRemovedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-tokenAddedSub.Err():
+				lgr.Error("error while processing token added event", "err", err)
+				errC <- fmt.Errorf("error while processing token added event: %w", err)
+				return
+			case err := <-tokenRemovedSub.Err():
+				lgr.Error("error while processing token removed event", "err", err)
+				errC <- fmt.Errorf("error while processing token removed event: %w", err)
+				return
+			case err := <-vaultCreatedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+			case err := <-vaultUpdatedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+			case err := <-vaultChainEditedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+			case err := <-vaultChainRemovedSub.Err():
+				lgr.Error("error while processing vault created event", "err", err)
+				errC <- fmt.Errorf("error while processing vault created event: %w", err)
+				return
+
+			case <-w.internalC.tokenAddedC:
+			case <-w.internalC.tokenRemovedC:
+			case <-w.internalC.vaultCreatedC:
+
+			case <-w.internalC.vaultUpdatedC:
+			case <-w.internalC.vaultChainEditedC:
+			case <-w.internalC.vaultChainRemovedC:
+			}
 		}
-	}
-	return result, err
+	}()
+	return nil
 }
 
-func (w *Watcher) getDualEventTopics() ([][]common.Hash, error) {
-	if w.dualTopics != nil {
-		return w.dualTopics, nil
+func (w *Watcher) handleNewHeaders(ctx context.Context, errC chan error) error {
+	lgr := w.client.logger
+	// Watch for new headers
+	headSink := make(chan *types.Header, 2)
+	headerSubscription, err := w.client.KAIClient.SubscribeNewHead(ctx, headSink)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to header events: %w", err)
 	}
-	var (
-		swapSMCABI = w.client.SwapSMC.ABI
-		topics     []common.Hash
-	)
-	for i := range swapSMCABI.Events {
-		topics = append(topics, swapSMCABI.Events[i].ID)
-		w.client.logger.Debug("Appending dual topics...", "topic", swapSMCABI.Events[i].ID)
-	}
-	w.dualTopics = [][]common.Hash{topics}
-	w.client.logger.Info("Dual topics", "topics", topics)
-	return w.dualTopics, nil
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case e := <-headerSubscription.Err():
+				errC <- fmt.Errorf("error while processing header subscription: %w", e)
+				return
+			case ev := <-headSink:
+				start := time.Now()
+				lgr.Info("processing new header", "block", ev.Height)
+
+				w.pendingLocksMtx.Lock()
+
+				for hash, pLock := range w.pendingLocks {
+
+					// Transaction was dropped and never picked up again
+					if pLock.Raw.BlockHeight+4*w.minConfirmations <= ev.Height {
+						lgr.Debug("lockup timed out", "tx", pLock.Raw.TxHash, "block", ev.Height)
+						delete(w.pendingLocks, hash)
+						continue
+					}
+
+					// Transaction is now ready
+					if pLock.Raw.BlockHeight+w.minConfirmations <= ev.Height {
+						lgr.Debug("lockup confirmed", "tx", pLock.Raw.TxHash, "block", ev.Height)
+						delete(w.pendingLocks, hash)
+						if pLock.RawName == dualCfg.DepositedEventRawName {
+							//w.depositC <- pLock
+						} else if pLock.RawName == dualCfg.DepositedEventRawName {
+							//w.withdrawC <- pLock
+						}
+					}
+				}
+
+				w.pendingLocksMtx.Unlock()
+				lgr.Info("processed new header", "block", ev.Height,
+					"took", time.Since(start))
+			}
+		}
+	}()
+	return nil
 }

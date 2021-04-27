@@ -7,7 +7,7 @@ import (
 	"github.com/kardiachain/go-kardia/signer/core"
 )
 
-var types = core.Types{
+var signerTypes = core.Types{
 	"EIP712Domain": {
 		{
 			Name: "name",
@@ -79,7 +79,7 @@ func WithDepositHash(d *dproto.Deposit, bridgeAddr common.Address) error {
 	}
 
 	var typedData = core.TypedData{
-		Types:       types,
+		Types:       signerTypes,
 		PrimaryType: "Deposit",
 		Domain:      domain,
 		Message:     msg,

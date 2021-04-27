@@ -1,67 +1,59 @@
 package ethereum
 
 import (
+	"context"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	ethCommon "github.com/ethereum/go-ethereum/common"
+	ethTypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/kardiachain/go-kardia/lib/common"
 
-	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
+	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum/bridge"
 	dualCfg "github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/store"
-	dualTypes "github.com/kardiachain/go-kardia/dualnode/types"
-	"github.com/kardiachain/go-kardia/lib/common"
+	"github.com/kardiachain/go-kardia/dualnode/types"
+	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
+	kaiTypes "github.com/kardiachain/go-kardia/types"
 )
 
 type Watcher struct {
 	quit chan struct{}
 
 	client *ETHLightClient
-	events chan *dualTypes.DualEvent
 
-	store      *store.Store
-	checkpoint uint64
-	dualTopics [][]ethCommon.Hash
-}
+	minConfirmations uint64
+	pendingLocks     map[ethCommon.Hash]*types.DualEvent
+	pendingLocksMtx  sync.Mutex
 
-func newWatcher(client *ETHLightClient, store *store.Store) *Watcher {
-	return &Watcher{
-		quit:   make(chan struct{}, 1),
-		client: client,
-		store:  store,
-		events: make(chan *dualTypes.DualEvent, dualCfg.DualEventChanSize),
+	store     *store.Store
+	depositC  chan *dproto.Deposit
+	withdrawC chan types.Withdraw
+	vsChan    chan *types.ValidatorSet
+	internalC struct {
+		depositedC chan *bridge.BridgeDeposited
+		withdrawC  chan *bridge.BridgeWithdraw
 	}
 }
 
-func (w *Watcher) GetDualEventsChannel() chan *dualTypes.DualEvent {
-	return w.events
+func newWatcher(client *ETHLightClient, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Watcher {
+	return &Watcher{
+		quit:         make(chan struct{}, 1),
+		client:       client,
+		store:        s,
+		pendingLocks: make(map[ethCommon.Hash]*types.DualEvent),
+		depositC:     depositC,
+		withdrawC:    withdrawC,
+		vsChan:       vsC,
+	}
 }
 
 func (w *Watcher) Start() error {
-	checkpoint, err := w.store.GetCheckpoint(w.client.ChainConfig.ChainID)
-	if err != nil {
-		w.client.logger.Error("Cannot get old checkpoint", "chainID", w.client.ChainConfig.ChainID, "err", err)
-	}
-	// update checkpoint
-	if w.checkpoint <= 0 {
-		latestBlock, err := w.client.ETHClient.BlockByNumber(w.client.ctx, nil)
-		if err != nil {
-			w.client.logger.Error("Cannot get latest ETH block", "err", err)
-			return err
-		}
-		w.checkpoint = latestBlock.NumberU64()
-		err = w.store.SetCheckpoint(w.checkpoint, w.client.ChainConfig.ChainID)
-		if err != nil {
-			w.client.logger.Error("Cannot store checkpoint to store", "err", err, "chainID", w.client.ChainConfig.ChainID, "checkpoint", w.checkpoint)
-		}
-	} else {
-		w.checkpoint = checkpoint
-	}
-	w.client.logger.Info("Ethereum watcher started at", "height", w.checkpoint)
 	go func() {
-		if err := w.watch(); err != nil {
+		if err := w.Watch(); err != nil {
 			fmt.Printf("watch blocks error: %s", err)
 		}
 	}()
@@ -73,130 +65,158 @@ func (w *Watcher) Stop() error {
 	return nil
 }
 
-func (w *Watcher) watch() error {
-	// init a ticker for polling dual events
-	var (
-		pollingEventsFreq = dualCfg.DualEventFreq
-		pollingEventsCh   = make(chan struct{}, 1)
-		pollingEventsTk   = time.NewTicker(pollingEventsFreq)
-	)
-	defer pollingEventsTk.Stop()
-	for {
-		select {
-		case <-w.quit:
-			return nil
-		case <-pollingEventsTk.C:
+func (w *Watcher) Watch() error {
+	lgr := w.client.logger
+	ctx := context.Background()
+	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	f, err := bridge.NewBridgeFilterer(ethCommon.HexToAddress(w.client.ChainConfig.BridgeSmcAddr), w.client.ETHClient)
+	if err != nil {
+		return fmt.Errorf("could not create ETH bridge filter: %w", err)
+	}
+
+	// Subscribe to token deposited events
+	depositedSub, err := f.WatchDeposited(&bind.WatchOpts{Context: timeout}, w.internalC.depositedC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token deposited events: %w", err)
+	}
+
+	// Subscribe to token withdraw events
+	withdrawSub, err := f.WatchWithdraw(&bind.WatchOpts{Context: timeout}, w.internalC.withdrawC)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to token withdraw events: %w", err)
+	}
+
+	errC := make(chan error)
+
+	// watch for dual events
+	go func() {
+		for {
 			select {
-			case pollingEventsCh <- struct{}{}:
-			default:
-			}
+			case <-ctx.Done():
+				return
+			case err := <-depositedSub.Err():
+				lgr.Error("error while processing deposited event", "err", err)
+				errC <- fmt.Errorf("error while processing deposited event: %w", err)
+				return
+			case err := <-withdrawSub.Err():
+				lgr.Error("error while processing withdraw event", "err", err)
+				errC <- fmt.Errorf("error while processing withdraw event: %w", err)
+				return
 
-		case <-pollingEventsCh:
-			// read dual events from filtered logs
-			dualEvents, err := w.GetLatestDualEvents()
-			if err != nil {
-				w.client.logger.Warn("Cannot get latest dual events", "err", err, "checkpoint", w.checkpoint)
-				continue
-			}
-			// send dual events to events channel
-			for i := range dualEvents {
-				decodedEvent, err := w.client.SwapSMC.ABI.EventByID(dualEvents[i].Topics[0])
+			case ev := <-w.internalC.depositedC:
+				b, err := w.client.ETHClient.BlockByNumber(ctx, new(big.Int).SetUint64(ev.Raw.BlockNumber))
 				if err != nil {
-					w.client.logger.Warn("Cannot decode dual event", "err", err, "checkpoint", w.checkpoint, "event", dualEvents[i])
-					continue
+					lgr.Error("error while getting block from ETH client", "err", err)
+					errC <- fmt.Errorf("error while getting block from ETH client: %w", err)
+					return
 				}
-				// extend event data to current dual events
-				dualEvents[i].ID = decodedEvent.ID
-				dualEvents[i].RawName = decodedEvent.RawName
-				dualEvents[i].Inputs = decodedEvent.Inputs
-				dualEvents[i].Sig = decodedEvent.Sig
-
-				// unpack event arguments
-				dualEvents[i].Arguments, dualEvents[i].Source, dualEvents[i].Destination, err = dualCmn.UnpackDualEventIntoMap(w.client.ABI,
-					dualEvents[i], w.client.ChainConfig.ChainID)
+				dualEv := &types.DualEvent{
+					Source:      1,
+					Destination: ev.DestChainId.Int64(),
+					Arguments:   ev,
+					Timestamp:   b.ReceivedAt,
+					RawName:     dualCfg.DepositedEventRawName,
+					Raw:         convertToKAILog(ev.Raw),
+				}
+				w.pendingLocksMtx.Lock()
+				w.pendingLocks[ev.Raw.TxHash] = dualEv
+				w.pendingLocksMtx.Unlock()
+			case ev := <-w.internalC.withdrawC:
+				b, err := w.client.ETHClient.BlockByNumber(ctx, new(big.Int).SetUint64(ev.Raw.BlockNumber))
 				if err != nil {
-					w.client.logger.Warn("Cannot unpack dual event", "err", err, "dualEvent", dualEvents[i])
-					continue
+					lgr.Error("error while getting block from ETH client", "err", err)
+					errC <- fmt.Errorf("error while getting block from ETH client: %w", err)
+					return
 				}
-
-				// send qualified to dual event channel for further actions
-				if dualEvents[i].Source != -1 && dualEvents[i].Destination != -1 {
-					w.events <- dualEvents[i]
+				dualEv := &types.DualEvent{
+					Source:      ev.SourceChainId.Int64(),
+					Destination: 1,
+					Arguments:   ev,
+					Timestamp:   b.ReceivedAt,
+					RawName:     dualCfg.WithdrawEventRawName,
+					Raw:         convertToKAILog(ev.Raw),
 				}
+				w.pendingLocksMtx.Lock()
+				w.pendingLocks[ev.Raw.TxHash] = dualEv
+				w.pendingLocksMtx.Unlock()
 			}
-		default:
 		}
-	}
-}
+	}()
 
-func (w *Watcher) GetLatestDualEvents() ([]*dualTypes.DualEvent, error) {
-	latestBlock, err := w.client.ETHClient.BlockByNumber(w.client.ctx, nil)
+	// Watch for new headers
+	headSink := make(chan *ethTypes.Header, 2)
+	headerSubscription, err := w.client.ETHClient.SubscribeNewHead(ctx, headSink)
 	if err != nil {
-		w.client.logger.Error("Cannot get latest ETH block", "err", err)
-		return nil, err
+		return fmt.Errorf("failed to subscribe to header events: %w", err)
 	}
-	if w.checkpoint > latestBlock.NumberU64() {
-		// prevent grabbing events of a block multiple times
-		return nil, nil
-	}
-	topics, err := w.getDualEventTopics()
-	if err != nil {
-		w.client.logger.Error("Cannot get dual event topics", "err", err)
-		return nil, err
-	}
-	w.checkpoint, err = w.store.GetCheckpoint(w.client.ChainConfig.ChainID)
-	query := ethereum.FilterQuery{
-		FromBlock: new(big.Int).SetUint64(w.checkpoint),
-		ToBlock:   new(big.Int).SetUint64(latestBlock.NumberU64()),
-		Addresses: []ethCommon.Address{w.client.SwapSMC.Address},
-		Topics:    topics,
-	}
-	w.checkpoint = latestBlock.NumberU64() + 1 // increase and store checkpoint to prevent grabbing events of a block multiple times
-	err = w.store.SetCheckpoint(w.checkpoint, w.client.ChainConfig.ChainID)
-	if err != nil {
-		w.client.logger.Error("Cannot store checkpoint to store", "err", err, "chainID", w.client.ChainConfig.ChainID, "checkpoint", w.checkpoint)
-	}
-	w.client.logger.Debug("Dual events query", "query", query)
-	logs, err := w.client.ETHClient.FilterLogs(w.client.ctx, query)
-	if err != nil {
-		w.client.logger.Error("Cannot get dual event", "err", err, "FromBlock", query.FromBlock.Uint64(), "ToBlock", query.ToBlock.Uint64())
-		return nil, err
-	}
-	result := make([]*dualTypes.DualEvent, len(logs))
-	for i := range logs {
-		result[i] = &dualTypes.DualEvent{
-			// extract log data to current dual event
-			Address:     common.HexToAddress(logs[i].Address.Hex()),
-			Topics:      convertTopics(logs[i].Topics),
-			Data:        logs[i].Data,
-			BlockHeight: logs[i].BlockNumber,
-			TxHash:      common.BytesToHash(logs[i].TxHash.Bytes()),
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case e := <-headerSubscription.Err():
+				errC <- fmt.Errorf("error while processing header subscription: %w", e)
+				return
+			case ev := <-headSink:
+				start := time.Now()
+				lgr.Info("processing new header", "block", ev.Number)
+
+				w.pendingLocksMtx.Lock()
+
+				blockNumberU := ev.Number.Uint64()
+				for hash, pLock := range w.pendingLocks {
+
+					// Transaction was dropped and never picked up again
+					if pLock.Raw.BlockHeight+4*w.minConfirmations <= blockNumberU {
+						lgr.Debug("lockup timed out", "tx", pLock.Raw.TxHash, "block", ev.Number)
+						delete(w.pendingLocks, hash)
+						continue
+					}
+
+					// Transaction is now ready
+					if pLock.Raw.BlockHeight+w.minConfirmations <= ev.Number.Uint64() {
+						lgr.Debug("lockup confirmed", "tx", pLock.Raw.TxHash, "block", ev.Number)
+						delete(w.pendingLocks, hash)
+						if pLock.RawName == dualCfg.DepositedEventRawName {
+							//w.depositC <- pLock
+						} else if pLock.RawName == dualCfg.DepositedEventRawName {
+							//w.withdrawC <- pLock
+						}
+					}
+				}
+
+				w.pendingLocksMtx.Unlock()
+				lgr.Info("processed new header", "block", ev.Number,
+					"took", time.Since(start))
+			}
 		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errC:
+		return err
 	}
-	return result, err
 }
 
-func (w *Watcher) getDualEventTopics() ([][]ethCommon.Hash, error) {
-	if w.dualTopics != nil {
-		return w.dualTopics, nil
+func convertToKAILog(ethLog ethTypes.Log) kaiTypes.Log {
+	topics := make([]common.Hash, len(ethLog.Topics))
+	for i := range ethLog.Topics {
+		topics[i] = common.BytesToHash(ethLog.Topics[i].Bytes())
 	}
-	var (
-		swapSMCABI = w.client.SwapSMC.ABI
-		topics     []ethCommon.Hash
-	)
-	for i := range swapSMCABI.Events {
-		topics = append(topics, ethCommon.BytesToHash(swapSMCABI.Events[i].ID.Bytes()))
-		w.client.logger.Debug("Appending dual topics...", "topic", swapSMCABI.Events[i].ID)
+	return kaiTypes.Log{
+		Address:     common.HexToAddress(ethLog.Address.Hex()),
+		Topics:      topics,
+		Data:        ethLog.Data,
+		BlockHeight: ethLog.BlockNumber,
+		TxHash:      common.HexToHash(ethLog.TxHash.Hex()),
+		TxIndex:     ethLog.TxIndex,
+		BlockHash:   common.HexToHash(ethLog.BlockHash.Hex()),
+		Index:       ethLog.Index,
+		Removed:     ethLog.Removed,
 	}
-	w.dualTopics = [][]ethCommon.Hash{topics}
-	w.client.logger.Info("Dual topics", "topics", topics)
-	return w.dualTopics, nil
-}
-
-func convertTopics(ethTopics []ethCommon.Hash) []common.Hash {
-	result := make([]common.Hash, len(ethTopics))
-	for i := range ethTopics {
-		result[i] = common.BytesToHash(ethTopics[i].Bytes())
-	}
-	return result
 }
