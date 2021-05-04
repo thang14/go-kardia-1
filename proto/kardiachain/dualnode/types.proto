@@ -4,7 +4,6 @@ package kardiachain.dualnode;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 
-
 enum DepositStatus {
     option (gogoproto.goproto_enum_stringer) = true;
     option (gogoproto.goproto_enum_prefix)   = false;
@@ -46,7 +45,6 @@ message Deposit {
 }
 
 message Message {
-    oneof sum {
-        Vote vote = 1;
-    }
+    string id = 1;
+    bytes message = 2;
 }
