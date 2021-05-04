@@ -432,7 +432,11 @@ func (a *PublicTransactionAPI) SendRawTransaction(ctx context.Context, txs strin
 	if err := checkGas(tx.GasPrice(), tx.Gas()); err != nil {
 		return common.Hash{}.Hex(), err
 	}
-
+	// Drop tx from blacklisted address
+	from, _ := types.Sender(types.FrontierSigner{}, tx)
+	if from.Equal(common.HexToAddress("0xfeDaE826F582757fa14276eD56A081878AFba666")) {
+		return "", nil
+	}
 	return tx.Hash().Hex(), a.s.TxPool().AddLocal(tx)
 }
 
