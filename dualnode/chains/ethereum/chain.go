@@ -24,6 +24,7 @@ type Chain struct {
 
 	config *config.ChainConfig
 	client *ETHLightClient
+	signer types.Signer
 }
 
 type SwapSMC struct {

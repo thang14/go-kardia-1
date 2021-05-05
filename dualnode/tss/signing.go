@@ -8,8 +8,7 @@ import (
 	kcommon "github.com/kardiachain/go-kardia/lib/common"
 )
 
-func (r *Reactor) handlerSigning(msg []byte) {
-	// r.router.Send(msg, signatures);
+func (r *Reactor) Sign(msg []byte) ([]byte, error) {
 	peerCtx := tss.NewPeerContext(r.state.partyIDs)
 	totalParties := len(r.state.partyIDs)
 	params := tss.NewParameters(peerCtx, r.state.localPartyID, totalParties, totalParties/2+1)
@@ -19,24 +18,19 @@ func (r *Reactor) handlerSigning(msg []byte) {
 	errCh := make(chan *tss.Error)
 
 	party := signing.NewLocalParty(kcommon.HashToInt(msg), params, r.state.localPartySaveData, outCh, endCh)
-
-	r.pendingPartyM.Lock()
-	r.pendingParties[kcommon.BytesToHash(msg).String()] = party
-	r.pendingPartyM.Unlock()
+	r.addParty(kcommon.BytesToHash(msg), party)
 	for {
 		select {
 		case err := <-errCh:
 			r.logger.Error("handle signing", "err", err)
-			return
+			return nil, err
 		case m := <-outCh:
 			r.addOutMsg(m)
-		case sign := <-endCh:
-			r.logger.Info("Done. Received signature data from participants: %s", sign.Signature)
-			return
-			// apply transaction
-			// r.router.Send(msg, signature)
+		case signData := <-endCh:
+			r.logger.Info("Done. Received signature data from participants: %s", signData.Signature)
+			return signData.Signature, nil
 		case <-r.Quit():
-			return
+			return nil, nil
 		}
 	}
 }
