@@ -18,7 +18,8 @@ func (r *Reactor) Sign(msg []byte) ([]byte, error) {
 	errCh := make(chan *tss.Error)
 
 	party := signing.NewLocalParty(kcommon.HashToInt(msg), params, r.state.localPartySaveData, outCh, endCh)
-	r.addParty(kcommon.BytesToHash(msg), party)
+	partyID := kcommon.BytesToHash(msg).String()
+	r.pendingParties[partyID] = party
 	for {
 		select {
 		case err := <-errCh:
@@ -28,6 +29,7 @@ func (r *Reactor) Sign(msg []byte) ([]byte, error) {
 			r.addOutMsg(m)
 		case signData := <-endCh:
 			r.logger.Info("Done. Received signature data from participants: %s", signData.Signature)
+			delete(r.pendingParties, partyID)
 			return signData.Signature, nil
 		case <-r.Quit():
 			return nil, nil

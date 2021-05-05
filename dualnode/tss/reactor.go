@@ -7,7 +7,6 @@ import (
 	"github.com/binance-chain/tss-lib/tss"
 	"github.com/gogo/protobuf/proto"
 	"github.com/kardiachain/go-kardia/dualnode/types"
-	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/lib/p2p"
 )
@@ -48,12 +47,6 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 func (r *Reactor) addOutMsg(msg tss.Message) {
 	// add message
-}
-
-func (r *Reactor) addParty(hash common.Hash, party tss.Party) {
-	r.pendingPartyM.Lock()
-	r.pendingParties[hash.String()] = party
-	r.pendingPartyM.Unlock()
 }
 
 // GetChannels implements Reactor
