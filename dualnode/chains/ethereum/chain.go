@@ -64,7 +64,7 @@ func NewETHLightClient(chainCfg *config.ChainConfig) (*ETHLightClient, error) {
 	}, nil
 }
 
-func NewChain(chainCfg *config.ChainConfig, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *Chain {
+func NewChain(chainCfg *config.ChainConfig, s *store.Store) *Chain {
 	if chainCfg == nil {
 		panic("ETH light client is not available")
 	}
@@ -72,8 +72,12 @@ func NewChain(chainCfg *config.ChainConfig, s *store.Store, depositC chan *dprot
 	if err != nil {
 		panic(fmt.Errorf("cannot setup ETH light client, err: %v", err))
 	}
+
+	depositC := make(chan *dproto.Deposit)
+	withdrawC := make(chan types.Withdraw)
+
 	return &Chain{
-		watcher: newWatcher(ethClient, s, depositC, withdrawC, vsC),
+		watcher: newWatcher(ethClient, s, depositC, withdrawC),
 
 		client: ethClient,
 		config: chainCfg,
@@ -82,6 +86,10 @@ func NewChain(chainCfg *config.ChainConfig, s *store.Store, depositC chan *dprot
 
 func (c *Chain) SetSigner(signer types.Signer) {
 	c.signer = signer
+}
+
+func (c *Chain) SetRouter(router types.Router) {
+	c.router = router
 }
 
 func (c *Chain) Start() error {
@@ -133,5 +141,13 @@ func (c *Chain) ReceiveDepositEvent(ctx context.Context, deposit dproto.Deposit)
 }
 
 func (c *Chain) ReceiveTransferOwnershipEvent(newOwner []byte) error {
+	return nil
+}
+
+func (c *Chain) ReceiveAddTokenEvent(tokenAddr []byte, locktype int) error {
+	return nil
+}
+
+func (c *Chain) ReceiveRemoveTokenEvent(tokenAddr []byte) error {
 	return nil
 }

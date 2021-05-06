@@ -2,31 +2,35 @@ package dualnode
 
 import (
 	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum"
-	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain"
 	"github.com/kardiachain/go-kardia/dualnode/config"
 	"github.com/kardiachain/go-kardia/dualnode/store"
+	"github.com/kardiachain/go-kardia/dualnode/tss"
 	"github.com/kardiachain/go-kardia/dualnode/types"
-	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
 )
 
 type Chain interface {
 	Stop() error
 	Start() error
+	SetSigner(types.Signer)
+	SetRouter(types.Router)
 }
 
 type ChainManager struct {
 	chains []Chain
+	router types.Router
 }
 
-func newChainManager(cfg *config.Config, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan types.Withdraw, vsC chan *types.ValidatorSet) *ChainManager {
+func newChainManager(cfg *config.Config, tssReactor *tss.Reactor, r types.Router, s *store.Store) *ChainManager {
 	m := &ChainManager{}
 	for _, chainConfig := range cfg.Chains {
 		var chain Chain
 		if chainConfig.Type == "eth" {
-			chain = ethereum.NewChain(&chainConfig, s, depositC, withdrawC, vsC)
+			chain = ethereum.NewChain(&chainConfig, s)
 		} else {
-			chain = kardiachain.NewChain(&chainConfig, s, depositC, withdrawC, vsC)
+			//chain = kardiachain.NewChain(&chainConfig, s, depositC, withdrawC, vsC)
 		}
+		chain.SetSigner(tssReactor)
+		chain.SetRouter(r)
 		m.chains = append(m.chains, chain)
 	}
 	return m

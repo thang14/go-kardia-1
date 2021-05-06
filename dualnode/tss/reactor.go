@@ -26,6 +26,20 @@ type Reactor struct {
 	pendingPartyM  sync.Mutex
 }
 
+func NewReactor() *Reactor {
+	r := &Reactor{
+		pendingParties: make(map[string]tss.Party),
+		state:          &State{},
+	}
+	r.BaseReactor = *p2p.NewBaseReactor("Tss", r)
+	return r
+}
+
+// AddPeer implements manager
+func (conR *Reactor) AddPeer(peer p2p.Peer) error {
+	return nil
+}
+
 // Receive implements Reactor by handling different message types.
 func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	msg, err := DecodeMsg(msgBytes)

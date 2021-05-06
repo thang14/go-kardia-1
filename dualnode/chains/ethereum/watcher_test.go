@@ -26,7 +26,7 @@ func initChain() (*Watcher, error) {
 	}
 	db := memorydb.New()
 	s := store.New(db)
-	watcher := newWatcher(client, s, make(chan *dproto.Deposit), make(chan types.Withdraw), make(chan *types.ValidatorSet))
+	watcher := newWatcher(client, s, make(chan *dproto.Deposit), make(chan types.Withdraw))
 	err = watcher.Start()
 	if err != nil {
 		return nil, fmt.Errorf("cannot start ETH watcher, err %v", err)
