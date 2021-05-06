@@ -23,6 +23,7 @@ type ChainConfig struct {
 	Type     string `yaml:"type"`
 	ChainID  int64  `yaml:"chainId"`
 	Endpoint string `yaml:"endpoint"`
+	GasPrice int64  `yaml:"gasPrice"`
 
 	BridgeSmcAddr string `yaml:"bridgeSmcAddr"`
 }

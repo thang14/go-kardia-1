@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	etypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/bridge"
+	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
-
-	"github.com/kardiachain/go-kardia/dualnode/store"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -22,9 +23,15 @@ import (
 type Chain struct {
 	watcher dualCmn.IWatcher
 
-	config *config.ChainConfig
-	client *ETHLightClient
-	signer types.Signer
+	config           *config.ChainConfig
+	client           *ETHLightClient
+	signer           types.Signer
+	eipSigner        etypes.Signer
+	bridgeTransactor *bridge.BridgeTransactor
+	depositC         chan *dproto.Deposit
+	withdrawC        chan types.Withdraw
+	quit             chan bool
+	router           types.Router
 }
 
 type SwapSMC struct {
@@ -35,9 +42,8 @@ type SwapSMC struct {
 type ETHLightClient struct {
 	ChainConfig *config.ChainConfig
 	ETHClient   *ethclient.Client
-
-	ctx    context.Context
-	logger log.Logger
+	ctx         context.Context
+	logger      log.Logger
 }
 
 func NewETHLightClient(chainCfg *config.ChainConfig) (*ETHLightClient, error) {
@@ -74,10 +80,15 @@ func NewChain(chainCfg *config.ChainConfig, s *store.Store, depositC chan *dprot
 	}
 }
 
+func (c *Chain) SetSigner(signer types.Signer) {
+	c.signer = signer
+}
+
 func (c *Chain) Start() error {
 	if err := c.watcher.Start(); err != nil {
 		return err
 	}
+	go c.processHandleEvents()
 	return nil
 }
 
@@ -85,5 +96,42 @@ func (c *Chain) Stop() error {
 	if err := c.watcher.Stop(); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *Chain) SubmitTransaction(ctx context.Context, tx *etypes.Transaction) error {
+	txHash := c.eipSigner.Hash(tx)
+	signature, err := c.signer.Sign(txHash.Bytes())
+	if err != nil {
+		return err
+	}
+	tx.WithSignature(c.eipSigner, signature)
+	return c.client.ETHClient.SendTransaction(ctx, tx)
+}
+
+func (c *Chain) buildWithdrawTransaction(deposit dproto.Deposit) (*etypes.Transaction, error) {
+	return nil, nil
+}
+
+func (c *Chain) processHandleEvents() {
+	for {
+		select {
+		case d := <-c.depositC:
+			c.router.SendDeposit(*d)
+		case <-c.quit:
+			return
+		}
+	}
+}
+
+func (c *Chain) ReceiveDepositEvent(ctx context.Context, deposit dproto.Deposit) error {
+	tx, err := c.buildWithdrawTransaction(deposit)
+	if err != nil {
+		return err
+	}
+	return c.SubmitTransaction(ctx, tx)
+}
+
+func (c *Chain) ReceiveTransferOwnershipEvent(newOwner []byte) error {
 	return nil
 }
