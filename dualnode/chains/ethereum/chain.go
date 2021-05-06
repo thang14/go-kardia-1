@@ -3,9 +3,10 @@ package ethereum
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	etypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/kardiachain/go-kardia/dualnode/chains/kardiachain/bridge"
+	"github.com/kardiachain/go-kardia/dualnode/chains/ethereum/bridge"
 	"github.com/kardiachain/go-kardia/dualnode/store"
 	"github.com/kardiachain/go-kardia/dualnode/types"
 	dproto "github.com/kardiachain/go-kardia/proto/kardiachain/dualnode"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/kardiachain/go-kardia/configs"
 	dualCmn "github.com/kardiachain/go-kardia/dualnode/common"
 	"github.com/kardiachain/go-kardia/dualnode/config"
@@ -118,14 +120,28 @@ func (c *Chain) SubmitTransaction(ctx context.Context, tx *etypes.Transaction) e
 }
 
 func (c *Chain) buildWithdrawTransaction(deposit dproto.Deposit) (*etypes.Transaction, error) {
-	return nil, nil
+	token := [32]byte{}
+	copy(token[:], deposit.Token)
+
+	depositor := [32]byte{}
+	copy(depositor[:], deposit.Depositor)
+	return c.bridgeTransactor.Withdraw(
+		c.newTransactOpts(),
+		big.NewInt(deposit.SourceChainId),
+		big.NewInt(deposit.DepositId),
+		depositor,
+		common.BytesToAddress(deposit.Recipient),
+		token,
+		big.NewInt(0),
+	)
 }
 
 func (c *Chain) processHandleEvents() {
 	for {
 		select {
 		case d := <-c.depositC:
-			c.router.SendDeposit(*d)
+			ctx := context.Background()
+			c.router.Deposit(ctx, *d)
 		case <-c.quit:
 			return
 		}
@@ -140,14 +156,30 @@ func (c *Chain) ReceiveDepositEvent(ctx context.Context, deposit dproto.Deposit)
 	return c.SubmitTransaction(ctx, tx)
 }
 
-func (c *Chain) ReceiveTransferOwnershipEvent(newOwner []byte) error {
-	return nil
+func (c *Chain) ReceiveTransferOwnershipEvent(ctx context.Context, newOwner []byte) error {
+	tx, err := c.bridgeTransactor.TransferOwnership(c.newTransactOpts(), common.BytesToAddress(newOwner))
+	if err != nil {
+		return err
+	}
+	return c.SubmitTransaction(ctx, tx)
 }
 
-func (c *Chain) ReceiveAddTokenEvent(tokenAddr []byte, locktype int) error {
-	return nil
+func (c *Chain) ReceiveAddTokenEvent(ctx context.Context, symbol [32]byte, tokenAddr []byte, locktype uint8) error {
+	tx, err := c.bridgeTransactor.CreateOrEditToken(c.newTransactOpts(), symbol, common.BytesToAddress(tokenAddr), locktype, big.NewInt(0))
+	if err != nil {
+		return err
+	}
+	return c.SubmitTransaction(ctx, tx)
 }
 
-func (c *Chain) ReceiveRemoveTokenEvent(tokenAddr []byte) error {
-	return nil
+func (c *Chain) ReceiveRemoveTokenEvent(ctx context.Context, symbol [32]byte) error {
+	tx, err := c.bridgeTransactor.RemoveToken(c.newTransactOpts(), symbol)
+	if err != nil {
+		return err
+	}
+	return c.SubmitTransaction(ctx, tx)
+}
+
+func (c *Chain) newTransactOpts() *bind.TransactOpts {
+	return &bind.TransactOpts{}
 }
