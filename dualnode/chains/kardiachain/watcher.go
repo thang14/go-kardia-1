@@ -44,7 +44,7 @@ type Watcher struct {
 	}
 }
 
-func newWatcher(client *KardiaClient, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan dualTypes.Withdraw, vsC chan *dualTypes.ValidatorSet) *Watcher {
+func newWatcher(client *KardiaClient, s *store.Store, depositC chan *dproto.Deposit, withdrawC chan dualTypes.Withdraw) *Watcher {
 	return &Watcher{
 		quit:         make(chan struct{}, 1),
 		client:       client,
@@ -52,7 +52,6 @@ func newWatcher(client *KardiaClient, s *store.Store, depositC chan *dproto.Depo
 		store:        s,
 		depositC:     depositC,
 		withdrawC:    withdrawC,
-		vsChan:       vsC,
 	}
 }
 
