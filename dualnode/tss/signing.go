@@ -8,6 +8,10 @@ import (
 	kcommon "github.com/kardiachain/go-kardia/lib/common"
 )
 
+func (r *Reactor) GetPubKey() []byte {
+	return nil
+}
+
 func (r *Reactor) Sign(msg []byte) ([]byte, error) {
 	peerCtx := tss.NewPeerContext(r.state.partyIDs)
 	totalParties := len(r.state.partyIDs)
