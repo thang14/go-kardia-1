@@ -63,6 +63,10 @@ func (r *Reactor) addOutMsg(msg tss.Message) {
 	// add message
 }
 
+func (r *Reactor) OnStart() error {
+	return r.run()
+}
+
 // GetChannels implements Reactor
 func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{

@@ -13,6 +13,7 @@ type PrivValidator interface {
 	SignVote(vote *dproto.Vote) error
 	GetAddress() common.Address
 	GetPrivKey() *ecdsa.PrivateKey
+	GetPubKey() ecdsa.PublicKey
 }
 
 type privValidator struct {
