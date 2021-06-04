@@ -422,6 +422,36 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 	return []interface{}{}, fmt.Errorf("filter not found")
 }
 
+func (api *PublicFilterAPI) FixBlockHashOfLogs(ctx context.Context, crit FilterCriteria) error {
+	// Construct the range filter
+	filter := NewRangeFilter(api.backend, crit.FromBlock, crit.ToBlock, crit.Addresses, crit.Topics)
+
+	// Run the filter and return all the logs
+	logs, err := filter.Logs(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range logs {
+		correctBlockHash := api.chainDb.ReadCanonicalHash(logs[i].BlockHeight)
+		if logs[i].BlockHash.Equal(correctBlockHash) {
+			continue
+		}
+		logs[i].BlockHash = correctBlockHash
+		blockInfo := api.chainDb.ReadBlockInfo(logs[i].BlockHash, logs[i].BlockHeight)
+		if blockInfo == nil {
+			continue
+		}
+		for j := range blockInfo.Receipts {
+			for k := range blockInfo.Receipts[j].Logs {
+				blockInfo.Receipts[j].Logs[k].BlockHash = logs[i].BlockHash
+			}
+		}
+		api.chainDb.WriteBlockInfo(logs[i].BlockHash, logs[i].BlockHeight, blockInfo)
+	}
+
+	return err
+}
+
 // returnHashes is a helper that will return an empty hash array case the given hash array is nil,
 // otherwise the given hashes array is returned.
 func returnHashes(hashes []common.Hash) []common.Hash {
