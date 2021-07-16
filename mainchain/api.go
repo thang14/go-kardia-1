@@ -655,26 +655,7 @@ func getPublicReceipt(receipt types.Receipt, tx *types.Transaction, blockHash co
 func (a *PublicTransactionAPI) GetTransactionReceipt(ctx context.Context, hash string) (*PublicReceipt, error) {
 	txHash := common.HexToHash(hash)
 	tx, blockHash, height, index := a.s.kaiDb.ReadTransaction(txHash)
-	if height == 0 {
-		return nil, nil
-	}
-	if tx == nil { // try searching receipt in the previous block
-		for i := uint64(1); i <= 10; i++ {
-			blockHash = a.s.kaiDb.ReadCanonicalHash(height - i)
-			// get receipts from db
-			blockInfo := a.s.BlockInfoByBlockHash(ctx, blockHash)
-			if blockInfo == nil {
-				return nil, ErrBlockInfoNotFound
-			}
-			for _, r := range blockInfo.Receipts {
-				if !r.TxHash.Equal(txHash) {
-					continue
-				} else {
-					receipt := r
-					return getPublicReceipt(*receipt, tx, blockHash, height, index), nil
-				}
-			}
-		}
+	if tx == nil || height == 0 {
 		return nil, nil
 	}
 	// get receipts from db
@@ -694,6 +675,24 @@ func (a *PublicTransactionAPI) GetTransactionReceipt(ctx context.Context, hash s
 		} else {
 			receipt := r
 			return getPublicReceipt(*receipt, tx, blockHash, height, index), nil
+		}
+	}
+	// try searching receipt in the previous 10 blocks
+	for i := uint64(1); i <= 10; i++ {
+		block := a.s.BlockByHeight(ctx, rpc.BlockHeight(height-i))
+		// get receipts from db
+		blockInfo := a.s.BlockInfoByBlockHash(ctx, block.Hash())
+		if blockInfo == nil {
+			return nil, ErrBlockInfoNotFound
+		}
+		for _, r := range blockInfo.Receipts {
+			if !r.TxHash.Equal(txHash) {
+				continue
+			} else {
+				// update the correct lookup entry and try again
+				a.s.kaiDb.WriteTxLookupEntries(block)
+				return a.GetTransactionReceipt(ctx, hash)
+			}
 		}
 	}
 	// return nil if not found
