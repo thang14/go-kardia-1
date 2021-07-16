@@ -659,18 +659,20 @@ func (a *PublicTransactionAPI) GetTransactionReceipt(ctx context.Context, hash s
 		return nil, nil
 	}
 	if tx == nil { // try searching receipt in the previous block
-		blockHash = a.s.kaiDb.ReadCanonicalHash(height - 1)
-		// get receipts from db
-		blockInfo := a.s.BlockInfoByBlockHash(ctx, blockHash)
-		if blockInfo == nil {
-			return nil, ErrBlockInfoNotFound
-		}
-		for _, r := range blockInfo.Receipts {
-			if !r.TxHash.Equal(txHash) {
-				continue
-			} else {
-				receipt := r
-				return getPublicReceipt(*receipt, tx, blockHash, height, index), nil
+		for i := uint64(1); i <= 10; i++ {
+			blockHash = a.s.kaiDb.ReadCanonicalHash(height - i)
+			// get receipts from db
+			blockInfo := a.s.BlockInfoByBlockHash(ctx, blockHash)
+			if blockInfo == nil {
+				return nil, ErrBlockInfoNotFound
+			}
+			for _, r := range blockInfo.Receipts {
+				if !r.TxHash.Equal(txHash) {
+					continue
+				} else {
+					receipt := r
+					return getPublicReceipt(*receipt, tx, blockHash, height, index), nil
+				}
 			}
 		}
 		return nil, nil
