@@ -214,12 +214,7 @@ func (bo *BlockOperations) checkTxs(txs []*types.Transaction, header *types.Head
 func (bo *BlockOperations) CommitAndValidateBlockTxs(block *types.Block, lastCommit stypes.LastCommitInfo, byzVals []stypes.Evidence) ([]*types.Validator, common.Hash, error) {
 	vals, root, blockInfo, err := bo.commitTransactions(block.Transactions(), block.Header(), lastCommit, byzVals)
 	if err != nil {
-		root = block.AppHash()
-		bo.saveBlockInfo(blockInfo, block)
-		bo.blockchain.DB().WriteHeadBlockHash(block.Hash())
-		bo.blockchain.DB().WriteAppHash(block.Height(), root)
-		bo.blockchain.InsertHeadBlock(block)
-		return nil, root, nil
+		return nil, common.Hash{}, err
 	}
 	bo.saveBlockInfo(blockInfo, block)
 	bo.blockchain.DB().WriteHeadBlockHash(block.Hash())
