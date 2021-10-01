@@ -528,6 +528,7 @@ func (c *MConnection) sendPacketMsg() bool {
 		}
 		// Get ratio, and keep track of lowest ratio.
 		ratio := float32(channel.recentlySent) / float32(channel.desc.Priority)
+		c.Logger.Info("CHANNEL DEBUG: Selecting", "ratio", ratio, "ID", channel.desc.ID, "recentlySent", channel.recentlySent, "priority", channel.desc.Priority)
 		if ratio < leastRatio {
 			leastRatio = ratio
 			leastChannel = channel
@@ -538,9 +539,9 @@ func (c *MConnection) sendPacketMsg() bool {
 	if leastChannel == nil {
 		return true
 	}
-	// c.Logger.Info("Found a msgPacket to send")
 
 	// Make & send a PacketMsg from this channel
+	c.Logger.Info("CHANNEL DEBUG: Sending", "leastChannel", leastChannel.desc.ID, "leastRatio", leastRatio)
 	_n, err := leastChannel.writePacketMsgTo(c.bufConnWriter)
 	if err != nil {
 		c.Logger.Error("Failed to write PacketMsg", "err", err)
