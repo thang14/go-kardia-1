@@ -251,6 +251,30 @@ func DeleteCanonicalHash(db kaidb.KeyValueWriter, number uint64) {
 	}
 }
 
+// DeleteBlockInfo removes the block info of a block.
+func DeleteBlockInfo(db kaidb.KeyValueWriter, hash common.Hash, height uint64) {
+	if err := db.Delete(blockInfoKey(height, hash)); err != nil {
+		log.Crit("Failed to delete block info", "err", err)
+	}
+}
+
+// ReadAllHashes retrieves all the hashes assigned to blocks at a certain heights,
+// both canonical and reorged forks included.
+func ReadAllHashes(db kaidb.Iteratee, height uint64) []common.Hash {
+	prefix := headerKeyPrefix(height)
+
+	hashes := make([]common.Hash, 0, 1)
+	it := db.NewIterator(prefix, nil)
+	defer it.Release()
+
+	for it.Next() {
+		if key := it.Key(); len(key) == len(prefix)+32 {
+			hashes = append(hashes, common.BytesToHash(key[len(key)-32:]))
+		}
+	}
+	return hashes
+}
+
 // ReadBlockInfo retrieves blockReward, gasUsed and all the transaction receipts belonging to a block.
 func ReadBlockInfo(db kaidb.Reader, hash common.Hash, number uint64) *types.BlockInfo {
 	// Retrieve the flattened receipt slice

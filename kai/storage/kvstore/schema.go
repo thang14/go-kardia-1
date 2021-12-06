@@ -82,6 +82,11 @@ func encodeBlockHeight(height uint64) []byte {
 	return enc
 }
 
+// headerKeyPrefix = headerPrefix + num (uint64 big endian)
+func headerKeyPrefix(height uint64) []byte {
+	return append(headerPrefix, encodeBlockHeight(height)...)
+}
+
 // encodeIndex encodes an index as uint32
 func encodeIndex(index uint32) []byte {
 	enc := make([]byte, 4)

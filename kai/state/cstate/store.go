@@ -84,6 +84,8 @@ func (s *dbStore) LoadStateFromDBOrGenesisDoc(genesisDoc *genesis.Genesis) (Late
 		}
 		s.Save(state)
 	}
+
+	state.InitialHeight = genesisDoc.InitialHeight
 	return state, nil
 }
 

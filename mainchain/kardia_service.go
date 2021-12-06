@@ -146,24 +146,45 @@ func newKardiaService(ctx *node.ServiceContext, config *Config) (*KardiaService,
 	}
 
 	kai.stateDB = ctx.StateDB
-	evPool, err := evidence.NewPool(ctx.StateDB, kaiDb.DB(), kai.blockchain)
-	if err != nil {
-		return nil, err
-	}
 	kai.txPool = tx_pool.NewTxPool(config.TxPool, kai.chainConfig, kai.blockchain)
 	kai.txpoolR = tx_pool.NewReactor(config.TxPool, kai.txPool)
 	kai.txpoolR.SetLogger(kai.logger)
+
+	state, err := ctx.StateDB.LoadStateFromDBOrGenesisDoc(config.Genesis)
+	if err != nil {
+		return nil, err
+	}
+
+	kai.logger.Info("Block heights", "kai.blockchain.CurrentBlock().Height()", kai.blockchain.CurrentBlock().Height(),
+		"state.InitialHeight", state.InitialHeight)
+	if kai.blockchain.CurrentBlock().Height() >= state.InitialHeight {
+		if err = kai.blockchain.SetHead(state.InitialHeight); err != nil {
+			return nil, err
+		}
+		state.LastBlockHeight = kai.blockchain.CurrentBlock().Height()
+		partSet := kai.blockchain.CurrentBlock().MakePartSet(types.BlockPartSizeBytes)
+		state.LastBlockID = types.BlockID{
+			Hash: kai.blockchain.CurrentBlock().Hash(),
+			PartsHeader: partSet.Header(),
+		}
+		state.AppHash = kai.blockchain.DB().ReadAppHash(kai.blockchain.CurrentBlock().Height())
+		state.LastBlockTime = kai.blockchain.CurrentBlock().Header().Time
+		kai.logger.Info("Block heights", "kai.blockchain.CurrentBlock().Height()", kai.blockchain.CurrentBlock().Height(),
+			"state.InitialHeight", state.InitialHeight)
+	}
+
+	dbStore := cstate.NewStore(kai.blockchain.DB().DB())
+	dbStore.Save(state)
+	evPool, err := evidence.NewPool(dbStore, kai.blockchain.DB().DB(), kai.blockchain)
+	if err != nil {
+		return nil, err
+	}
 
 	bOper := blockchain.NewBlockOperations(kai.logger, kai.blockchain, kai.txPool, evPool, stakingUtil)
 
 	kai.evR = evidence.NewReactor(evPool)
 	kai.evR.SetLogger(kai.logger)
 	blockExec := cstate.NewBlockExecutor(ctx.StateDB, logger, evPool, bOper)
-
-	state, err := ctx.StateDB.LoadStateFromDBOrGenesisDoc(config.Genesis)
-	if err != nil {
-		return nil, err
-	}
 
 	// state starting configs
 	// Set private validator for consensus manager.

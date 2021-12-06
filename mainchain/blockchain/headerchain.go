@@ -23,7 +23,10 @@ import (
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/kardiachain/go-kardia/configs"
+	"github.com/kardiachain/go-kardia/kai/kaidb"
+	"github.com/kardiachain/go-kardia/kai/storage/kvstore"
 	"github.com/kardiachain/go-kardia/lib/common"
+	"github.com/kardiachain/go-kardia/lib/log"
 	"github.com/kardiachain/go-kardia/types"
 )
 
@@ -145,39 +148,82 @@ func (hc *HeaderChain) SetGenesis(head *types.Header) {
 	hc.genesisHeader = head
 }
 
-// DeleteCallback is a callback function that is called by SetHead before
-// each header is deleted.
-type DeleteCallback func(types.StoreDB, uint64)
+type (
+	// UpdateHeadBlocksCallback is a callback function that is called by SetHead
+	// before head header is updated. The method will return the actual block it
+	// updated the head to (missing state) and a flag if setHead should continue
+	// rewinding till that forcefully (exceeded ancient limits)
+	UpdateHeadBlocksCallback func(kaidb.KeyValueWriter, *types.Header) (uint64, bool)
+
+	// DeleteCallback is a callback function that is called by SetHead before
+	// each header is deleted.
+	DeleteCallback func(kaidb.KeyValueWriter, kaidb.KeyValueReader, common.Hash, uint64)
+)
 
 // SetHead rewinds the local chain to a new head. Everything above the new head
 // will be deleted and the new one set.
 func (hc *HeaderChain) SetHead(head uint64, delFn DeleteCallback) {
-	height := uint64(0)
-
-	if hdr := hc.CurrentHeader(); hdr != nil {
-		height = hdr.Height
-	}
+	var (
+		chainDb    = hc.kaiDb.DB()
+		parentHash common.Hash
+		batch      = chainDb.NewBatch()
+		origin     = true
+	)
 	for hdr := hc.CurrentHeader(); hdr != nil && hdr.Height > head; hdr = hc.CurrentHeader() {
-		height := hdr.Height
-		if delFn != nil {
-			delFn(hc.kaiDb, height)
-		}
-		hc.kaiDb.DeleteBlockPart(height)
+		num := hdr.Height
 
-		hc.currentHeader.Store(hc.GetHeader(hdr.LastCommitHash, hdr.Height-1))
+		// Rewind block chain to new head.
+		parent := hc.GetHeader(hdr.LastBlockID.Hash, num-1)
+		if parent == nil {
+			parent = hc.genesisHeader
+		}
+		parentHash = parent.Hash()
+
+		// Update head first(head fast block, head full block) before deleting the data.
+		markerBatch := chainDb.NewBatch()
+
+		// Update head blcok then.
+		hc.kaiDb.WriteHeadBlockHash(parentHash)
+		if err := markerBatch.Write(); err != nil {
+			log.Crit("Failed to update chain markers", "error", err)
+		}
+		hc.currentHeader.Store(parent)
+		hc.currentHeaderHash = parentHash
+
+		// If this is the first iteration, wipe any leftover data upwards too so
+		// we don't end up with dangling daps in the database
+		var nums []uint64
+		if origin {
+			for n := num + 1; len(kvstore.ReadAllHashes(chainDb, n)) > 0; n++ {
+				nums = append([]uint64{n}, nums...) // suboptimal, but we don't really expect this path
+			}
+			origin = false
+		}
+		nums = append(nums, num)
+
+		// Remove the related data from the database on all sidechains
+		for _, num := range nums {
+			// Gather all the side fork hashes
+			hashes := kvstore.ReadAllHashes(chainDb, num)
+			if len(hashes) == 0 {
+				// No hashes in the database whatsoever, probably frozen already
+				hashes = append(hashes, hdr.Hash())
+			}
+			for _, hash := range hashes {
+				if delFn != nil {
+					delFn(batch, hc.kaiDb.DB(), hash, num)
+				}
+				kvstore.DeleteHeader(batch, hash, num)
+			}
+			kvstore.DeleteCanonicalHash(batch, num)
+		}
 	}
-	// Roll back the canonical chain numbering
-	for i := height; i > head; i-- {
-		hc.kaiDb.DeleteCanonicalHash(i)
+	// Flush all accumulated deletions.
+	if err := batch.Write(); err != nil {
+		log.Crit("Failed to rewind block", "error", err)
 	}
 
 	// Clear out any stale content from the caches
 	hc.headerCache.Purge()
 	hc.heightCache.Purge()
-
-	if hc.CurrentHeader() == nil {
-		hc.currentHeader.Store(hc.genesisHeader)
-	}
-	hc.currentHeaderHash = hc.CurrentHeader().Hash()
-
 }

@@ -146,10 +146,9 @@ func (c *Config) getGenesisConfig(isDual bool) (*genesis.Genesis, error) {
 			return nil, err
 		}
 	}
-
 	return &genesis.Genesis{
 		Config:          c.getChainConfig(),
-		InitialHeight:   1,
+		InitialHeight:   c.MainChain.InitialHeight,
 		Alloc:           ga,
 		Validators:      g.Validators,
 		ConsensusParams: c.getConsensusParams(),

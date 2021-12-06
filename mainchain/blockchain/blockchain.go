@@ -27,7 +27,9 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/kardiachain/go-kardia/configs"
 	"github.com/kardiachain/go-kardia/kai/events"
+	"github.com/kardiachain/go-kardia/kai/kaidb"
 	"github.com/kardiachain/go-kardia/kai/state"
+	"github.com/kardiachain/go-kardia/kai/storage/kvstore"
 	"github.com/kardiachain/go-kardia/kvm"
 	"github.com/kardiachain/go-kardia/lib/common"
 	"github.com/kardiachain/go-kardia/lib/event"
@@ -336,40 +338,46 @@ func (bc *BlockChain) GetHeaderByHeight(height uint64) *types.Header {
 // though, the head may be further rewound if block bodies are missing (non-archive
 // nodes after a fast sync).
 func (bc *BlockChain) SetHead(head uint64) error {
+	_, err := bc.setHeadBeyondRoot(head, common.Hash{}, false)
+	return err
+}
+
+// setHeadBeyondRoot rewinds the local chain to a new head with the extra condition
+// that the rewind must pass the specified state root. This method is meant to be
+// used when rewinding with snapshots enabled to ensure that we go back further than
+// persistent disk layer. Depending on whether the node was fast synced or full, and
+// in which state, the method will try to delete minimal data from disk whilst
+// retaining chain consistency.
+//
+// The method returns the block number where the requested root cap was found.
+func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bool) (uint64, error) {
 	bc.logger.Warn("Rewinding blockchain", "target", head)
 
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
-	// Rewind the header chain, deleting all block bodies until then
-	delFn := func(db types.StoreDB, height uint64) {
-		db.DeleteBlockPart(height)
-	}
-	bc.hc.SetHead(head, delFn)
-	currentHeader := bc.hc.CurrentHeader()
+	// Track the block number of the requested root hash
+	var rootNumber uint64 // (no root == always 0)
 
+	// Rewind the header chain, deleting all block bodies until then
+	delFn := func(db kaidb.KeyValueWriter, dbReader kaidb.KeyValueReader, hash common.Hash, num uint64) {
+		//appHash := kvstore.ReadAppHash(dbReader, num)
+		//kvstore.WriteAppHash(db, num-1, appHash)
+		blockHash := kvstore.ReadCanonicalHash(dbReader, num-1)
+		kvstore.WriteHeadBlockHash(db, blockHash)
+		kvstore.DeleteHeader(db, hash, num)
+		kvstore.DeleteBody(db, hash, num)
+		kvstore.DeleteBlockInfo(db, hash, num)
+
+		// TODO(trinhdn97): txlookup, etc
+	}
+	log.Warn("Rewinding blockchain in setHeadBeyondRoot", "target", head)
+	bc.hc.SetHead(head, delFn)
 	// Clear out any stale content from the caches
 	bc.blockCache.Purge()
 	bc.futureBlocks.Purge()
 
-	// Rewind the block chain, ensuring we don't end up with a stateless head block
-	if currentBlock := bc.CurrentBlock(); currentBlock != nil && currentHeader.Height < currentBlock.Height() {
-		bc.currentBlock.Store(bc.GetBlock(currentHeader.Hash(), currentHeader.Height))
-	}
-	if currentBlock := bc.CurrentBlock(); currentBlock != nil {
-		root := bc.DB().ReadAppHash(currentBlock.Height())
-		if _, err := state.New(bc.logger, root, bc.stateCache); err != nil {
-			// Rewound state missing, rolled back to before pivot, reset to genesis
-			bc.currentBlock.Store(bc.genesisBlock)
-		}
-	}
-
-	// If either blocks reached nil, reset to the genesis state
-	if currentBlock := bc.CurrentBlock(); currentBlock == nil {
-		bc.currentBlock.Store(bc.genesisBlock)
-	}
-
-	return bc.loadLastState()
+	return rootNumber, bc.loadLastState()
 }
 
 // InsertHeadBlock inserts new head block to blockchain and send new head event.

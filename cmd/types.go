@@ -71,6 +71,7 @@ type (
 		Protocol           *string    `yaml:"Protocol,omitempty"`
 		ChainID            uint64     `yaml:"ChainId"`
 		NetworkID          uint64     `yaml:"NetworkId"`
+		InitialHeight      uint64     `yaml:"InitialHeight"`
 		AcceptTxs          uint32     `yaml:"AcceptTxs"`
 		IsDual             uint       `yaml:"IsDual"`
 		Genesis            *Genesis   `yaml:"Genesis,omitempty"`
