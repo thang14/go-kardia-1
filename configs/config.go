@@ -55,7 +55,7 @@ var (
 	MainnetNetworkID = uint64(100)
 	TestnetNetworkID = uint64(1000)
 	// scheduled block for Galaxias Hardfork
-	galaxiasForkBlock = uint64(6039393)
+	galaxiasForkBlock = uint64(10)
 
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
 	MainnetChainConfig = &ChainConfig{
