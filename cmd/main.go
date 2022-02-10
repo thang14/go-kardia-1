@@ -317,6 +317,8 @@ func (c *Config) getConsensusParams() *kaiproto.ConsensusParams {
 func (c *Config) getChainConfig() *configs.ChainConfig {
 	if args.network == Mainnet {
 		return configs.MainnetChainConfig
+	} else if args.network == Testnet {
+		return configs.TestnetChainConfig
 	}
 	return c.Genesis.ChainConfig
 }
