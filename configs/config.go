@@ -63,8 +63,9 @@ var (
 			Period: 15,
 			Epoch:  30000,
 		},
-		GalaxiasBlock: &galaxiasForkBlock,
-		ChainID:       MainnetChainID,
+		GalaxiasBlock:   &galaxiasForkBlock,
+		GalaxiasBlockV2: 10,
+		ChainID:         MainnetChainID,
 	}
 
 	// TestnetChainConfig contains the chain parameters to run a node on the test network.
@@ -73,8 +74,9 @@ var (
 			Period: 15,
 			Epoch:  30000,
 		},
-		GalaxiasBlock: &galaxiasForkBlock,
-		ChainID:       TestnetChainID,
+		GalaxiasBlock:   &galaxiasForkBlock,
+		ChainID:         TestnetChainID,
+		GalaxiasBlockV2: 10,
 	}
 
 	// TestChainConfig contains the chain parameters to run unit test.
@@ -83,8 +85,9 @@ var (
 			Period: 15,
 			Epoch:  30000,
 		},
-		GalaxiasBlock: &galaxiasForkBlock,
-		ChainID:       TestnetChainID,
+		GalaxiasBlock:   &galaxiasForkBlock,
+		ChainID:         TestnetChainID,
+		GalaxiasBlockV2: 10,
 	}
 )
 

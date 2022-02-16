@@ -266,7 +266,6 @@ func (bo *BlockOperations) commitBlock(txs types.Transactions, header *types.Hea
 		bo.logger.Error("Fail to get blockchain head state", "err", err)
 		return nil, common.Hash{}, nil, err
 	}
-
 	// Mutate the block and state according to any hard-fork specs
 	if bo.blockchain.chainConfig.GalaxiasBlock != nil && *bo.blockchain.chainConfig.GalaxiasBlock == header.Height {
 		valsList, err := bo.staking.GetAllValContracts(state, header, bo.blockchain, bo.blockchain.vmConfig)
@@ -276,6 +275,9 @@ func (bo *BlockOperations) commitBlock(txs types.Transactions, header *types.Hea
 		}
 		misc.ApplyGalaxiasContracts(state, valsList)
 		bo.logger.Info("Applied Galaxias hardfork successfully at", "block", header.Height)
+	} else if bo.blockchain.chainConfig.GalaxiasBlockV2 == header.Height {
+		misc.ApplyGalaxiasV2Contracts(state)
+		bo.logger.Info("Applied Galaxias v2 hardfork successfully at", "block", header.Height)
 	}
 
 	// GasPool

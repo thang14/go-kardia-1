@@ -35,3 +35,7 @@ func ApplyGalaxiasContracts(statedb *state.StateDB, valsList []common.Address) {
 		statedb.SetCode(valsList[i], common.FromHex(galaxias.GalaxiasValidatorsSMCBytecode))
 	}
 }
+
+func ApplyGalaxiasV2Contracts(statedb *state.StateDB) {
+	statedb.SetCode(configs.StakingContractAddress, common.FromHex(galaxias.GalaxiasStakingSMCV2Bytecode))
+}

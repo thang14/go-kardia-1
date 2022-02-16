@@ -29,8 +29,9 @@ import (
 // that any network, identified by its genesis block, can have its own
 // set of configuration options.
 type ChainConfig struct {
-	ChainID       *big.Int `json:"chainId,omitempty" yaml:"ChainID"`             // chainId identifies the current chain and is used for replay protection
-	GalaxiasBlock *uint64  `json:"galaxiasBlock,omitempty" yaml:"galaxiasBlock"` // Mainnet Galaxias switch block (nil = no fork, 0 = already Galaxias)
+	ChainID         *big.Int `json:"chainId,omitempty" yaml:"ChainID"`                 // chainId identifies the current chain and is used for replay protection
+	GalaxiasBlock   *uint64  `json:"galaxiasBlock,omitempty" yaml:"galaxiasBlock"`     // Mainnet Galaxias switch block (nil = no fork, 0 = already Galaxias)
+	GalaxiasBlockV2 uint64   `json:"galaxiasBlockV2,omitempty" yaml:"galaxiasBlockV2"` // Mainnet Galaxias switch block (nil = no fork, 0 = already Galaxias)
 
 	// Various consensus engines
 	Kaicon *KaiconConfig `json:"kaicon,omitempty" yaml:"KaiconConfig"`
@@ -74,6 +75,11 @@ func (c *ChainConfig) IsGalaxias(height *uint64) bool {
 	return isForked(c.GalaxiasBlock, height)
 }
 
+// IsGalaxias returns the comparison head block height for Galaxias hardfork
+func (c *ChainConfig) IsGalaxiasV2(height *uint64) bool {
+	return isForked(&c.GalaxiasBlockV2, height)
+}
+
 // isForked returns whether a fork scheduled at block s is active at the given head block.
 func isForked(s, head *uint64) bool {
 	if s == nil || head == nil {
@@ -88,8 +94,9 @@ func isForked(s, head *uint64) bool {
 // Rules is a one time interface meaning that it shouldn't be used in between transition
 // phases.
 type Rules struct {
-	ChainID    *big.Int
-	IsGalaxias bool
+	ChainID      *big.Int
+	IsGalaxias   bool
+	IsGalaxiasV2 bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -100,7 +107,8 @@ func (c *ChainConfig) Rules(num *big.Int) Rules {
 	}
 	_num := num.Uint64()
 	return Rules{
-		ChainID:    chainID,
-		IsGalaxias: c.IsGalaxias(&_num),
+		ChainID:      chainID,
+		IsGalaxias:   c.IsGalaxias(&_num),
+		IsGalaxiasV2: c.IsGalaxiasV2(&_num),
 	}
 }
